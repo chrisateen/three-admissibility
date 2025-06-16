@@ -22,4 +22,10 @@ impl AdmData {
     pub fn is_size_of_packing_p(&self, p: usize) -> bool{
         self.t1.len() & self.packing.len() <= p
     }
+    
+    pub fn delete_packing(&mut self) {
+        self.p1.clear();
+        self.p2.clear();
+        self.packing.clear();
+    }
 }

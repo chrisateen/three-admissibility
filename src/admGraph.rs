@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, VertexMap, VertexSet, Vertex};
 use crate::admData::AdmData;
@@ -29,6 +30,47 @@ impl AdmGraph {
         for (u, adm_data) in &self.adm_data {
             if adm_data.t1.len() <= p {
                 self.candidates.insert(*u);
+            }
+        }
+    }
+    
+    pub fn get_t2_vertices(&self, v: &AdmData) -> VertexSet {
+        let mut t2_vertices : VertexSet = VertexSet::default();
+        for u in &v.p1 {
+            let u_t1_vertices = self.adm_data.get(&u).unwrap().t1.clone();
+            for x  in u_t1_vertices.difference(&v.t1) {
+                if x != &v.id{
+                    t2_vertices.insert(*x);
+                }
+            }
+        }
+        t2_vertices
+    }
+    
+    pub fn get_t3_vertices(&self, v: &AdmData) -> VertexSet {
+        let mut t3_vertices = VertexSet::default();
+        for u in &v.p1 {
+            let u_adm_data = self.adm_data.get(&u).unwrap();
+            let t2_from_u = self.get_t2_vertices(u_adm_data);
+            for x  in t2_from_u.difference(&v.t1) {
+                if x != &v.id{
+                    t3_vertices.insert(*x);
+                }
+            }
+        }
+        t3_vertices
+    }
+
+    pub fn store_maximal_2_packing(&self, v: &mut AdmData)  {
+        let p1 = v.p1.clone();
+        v.delete_packing();
+        
+        for u in p1{
+            let u_adm_data = self.adm_data.get(&u).unwrap();
+            let should_add_to_pack = u_adm_data.t1.difference(&v.t1).count() >  0;
+            if should_add_to_pack {
+                //TODO think about how 2 packing will be stored
+                v.p1.insert(u);
             }
         }
     }
