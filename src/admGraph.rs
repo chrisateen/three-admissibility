@@ -86,10 +86,10 @@ impl AdmGraph {
         
         for x in &v.p1{
             if !u.is_vertex_in_p(x) {
-                let t1_x = self.adm_data.get(&x).unwrap().t1.clone();
-                for y  in &t1_x {
+                let x_adm_data = self.adm_data.get(&x).unwrap();
+                for y  in &x_adm_data.t1 {
                     if !u.is_an_endpoint_in_pack(y) {
-                        u.add_t3_to_packing(y, x, &v.id);
+                        u.add_t3_to_packing(y, &x, &v.id);
                         return
                     }
                 }
