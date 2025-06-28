@@ -6,8 +6,8 @@ pub struct AdmData {
     pub n_in_r: VertexSet,
     pub p1: VertexSet,
     pub p2: VertexSet,
-    pub packing: VertexMap<Vec<Vertex>>, 
-    //pub vias TODO store vias
+    pub vias: VertexSet,
+    pub packing: VertexMap<Vec<Vertex>>,
 }
 
 impl AdmData {
@@ -18,12 +18,13 @@ impl AdmData {
             t1: v_neighbours,
             p1: VertexSet::default(),
             p2: VertexSet::default(),
+            vias: VertexSet::default(),
             packing: VertexMap::default(),
         }
     }
 
-    pub fn is_size_of_packing_p(&self, p: usize) -> bool{
-        self.t1.len() & self.packing.len() <= p
+    pub fn size_of_packing(&self) -> usize{
+        self.t1.len() + self.packing.len()
     }
     
     pub fn remove_v_from_packing(&mut self, v: &Vertex) ->  Vec<Vertex> {
@@ -52,6 +53,13 @@ impl AdmData {
     
     pub fn is_vertex_in_p(&self, v: &Vertex) -> bool {
         self.p1.contains(v) | self.p2.contains(v)
+    }
+
+    pub fn get_all_t2_vertices(&self) -> VertexSet {
+        self.packing.iter()
+            .filter(|(_, p)| p.len() == 1)
+            .map(|(v, _)| *v)
+            .collect()
     }
     
     pub fn delete_packing(&mut self) {

@@ -1,3 +1,4 @@
+use std::mem;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, VertexMap, VertexSet, Vertex};
 use crate::admData::AdmData;
@@ -33,20 +34,39 @@ impl AdmGraph {
         }
     }
 
-    pub fn store_maximal_2_packing(&self, v: &mut AdmData)  {
+    //Also stores a maximal 2-packing
+    fn store_vias(&mut self, p: usize, v: &mut AdmData) {
         let p1 = v.p1.clone();
         v.delete_packing();
 
-        for u in p1{
-            let u_adm_data = self.adm_data.get(&u).unwrap();
-            let should_add_to_pack = u_adm_data.t1.difference(&v.t1).count() >  0;
-            if should_add_to_pack {
-                v.p1.insert(u);
+        let mut counter : VertexMap<i32> = VertexMap::default();
+        let t2_v = v.get_all_t2_vertices();
+
+        for u in &v.n_in_r {
+            let mut u_adm_data = self.adm_data.remove(&u).unwrap();
+            u_adm_data.t1.remove(&v.id);
+            u_adm_data.n_in_r.insert(v.id);
+            if v.t1.len() > 0 { u_adm_data.vias.insert(v.id); }
+            
+            if p1.contains(u){
+                if u_adm_data.t1.len() > 0 {
+                    v.vias.insert(*u);
+                    v.p1.insert(*u);
+                }
+            }else {
+                for w in &t2_v {
+                    let num_vias_w = counter.entry(*w).or_insert(0);
+                    if u_adm_data.t1.contains(w) && num_vias_w < &mut (2 * p as i32) { 
+                        v.vias.insert(*u);
+                        *num_vias_w +=1;
+                    }
+                }
             }
+            self.adm_data.insert(*u, u_adm_data);
         }
     }
     
-    pub fn get_t2_vertices(&self, v: &AdmData) -> VertexSet {
+    fn get_t2_vertices(&self, v: &AdmData) -> VertexSet {
         let mut t2_vertices : VertexSet = VertexSet::default();
         for u in &v.p1 {
             let u_t1_vertices = self.adm_data.get(&u).unwrap().t1.clone();
@@ -59,7 +79,7 @@ impl AdmGraph {
         t2_vertices
     }
     
-    pub fn get_t3_vertices(&self, v: &AdmData) -> VertexSet {
+    fn get_t3_vertices(&self, v: &AdmData) -> VertexSet {
         let mut t3_vertices = VertexSet::default();
         for u in &v.p1 {
             let u_adm_data = self.adm_data.get(&u).unwrap();
@@ -73,7 +93,7 @@ impl AdmGraph {
         t3_vertices
     }
     
-    pub fn update_t1_of_v(&mut self, v:&AdmData, u: &mut AdmData) {
+    fn update_t1_of_v(&mut self, v:&AdmData, u: &mut AdmData) {
         u.t1.remove(&v.id);
         u.n_in_r.insert(v.id);
         
@@ -97,7 +117,7 @@ impl AdmGraph {
         }
     }
     
-    pub fn update_t2_of_v(&mut self, v:&Vertex, u: &mut AdmData) {
+    fn update_t2_of_v(&mut self, v:&Vertex, u: &mut AdmData) {
         let w = u.remove_v_from_packing(v)[0];
         let w_adm_data = self.adm_data.get(&w).unwrap();
         
@@ -121,7 +141,7 @@ impl AdmGraph {
         }
     }
     
-    pub fn update_t3_of_v(&mut self, v:&Vertex, u: &mut AdmData) {
+    fn update_t3_of_v(&mut self, v:&Vertex, u: &mut AdmData) {
         let p = u.remove_v_from_packing(&v);
         let s = p[0];//p1
         let w = p[1];//p2
@@ -148,14 +168,25 @@ impl AdmGraph {
         }
     }
     
-    pub fn update_v(&mut self, v:&mut AdmData) {
+    fn do_checks(&mut self, p: usize){
+        let checks = mem::take(&mut self.checks);
+        
+        for v in checks {
+            let v_adm_data = self.adm_data.get(&v).unwrap();
+            if v_adm_data.size_of_packing() <= p{
+                
+            }
+        }
+    }
+    
+    fn update_v(&mut self, p: usize, v:&mut AdmData) {
         self.candidates.remove(&v.id);
         self.l.remove(&v.id);
         
         let t2_v = self.get_t2_vertices(v);
-        let t3_v = self.get_t3_vertices(v);
+        let t3_v = self.get_t3_vertices(v);//TODO t3 - t2
         
-        self.store_maximal_2_packing(v);
+        self.store_vias(p,v);
         
         for u in &v.t1 {
             let mut u_adm_data = self.adm_data.remove(u).unwrap();
@@ -184,7 +215,7 @@ impl AdmGraph {
         match v { 
             Some(&v) => {
                 let mut v_adm_data = self.adm_data.remove(&v).unwrap();
-                self.update_v(&mut v_adm_data);
+                self.update_v(p, &mut v_adm_data);
                 self.adm_data.insert(v, v_adm_data);
                 Some(v)
             }
