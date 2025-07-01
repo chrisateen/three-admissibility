@@ -168,14 +168,50 @@ impl AdmGraph {
         }
     }
     
+    fn do_maximal_check(&mut self, p: usize, v:&mut AdmData) -> bool{
+        v.delete_packing();
+
+        'main: for t in v.n_in_r.clone() {
+            let t_adm_data =  self.adm_data.get(&t).unwrap();
+            for s in  &t_adm_data.t1 {
+                if !v.is_an_endpoint_in_pack(s){
+                    v.add_t2_to_packing(s, &t);
+                    continue 'main;
+                }
+            }
+
+            for s in v.vias.clone() {
+                if !v.is_vertex_in_p(&s){
+                    let s_adm_data =  self.adm_data.get(&s).unwrap();
+                    for y  in &s_adm_data.t1 {
+                        if !v.is_vertex_in_p(y){
+                            v.add_t3_to_packing(y, &t, &s);
+                            continue 'main;
+                        }
+                    }
+                }
+            }    
+        }
+        v.size_of_packing() <= p
+    }
+
+    fn do_maximum_check(&mut self, p: usize, v:&mut AdmData){
+        
+    }
+    
     fn do_checks(&mut self, p: usize){
         let checks = mem::take(&mut self.checks);
         
         for v in checks {
-            let v_adm_data = self.adm_data.get(&v).unwrap();
+            let mut v_adm_data = self.adm_data.remove(&v).unwrap();
             if v_adm_data.size_of_packing() <= p{
-                
+                let maximal_check = self.do_maximal_check(p, &mut v_adm_data);
+                if maximal_check {
+                    //TODO MAXIMUM
+                    self.candidates.insert(v);
+                }
             }
+            self.adm_data.insert(v, v_adm_data);
         }
     }
     
