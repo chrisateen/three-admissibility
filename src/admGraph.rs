@@ -1,17 +1,18 @@
-use std::mem;
+use std::collections::HashSet;
 use graphbench::editgraph::EditGraph;
-use graphbench::graph::{Graph, VertexMap, VertexSet, Vertex};
+use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 use crate::admData::AdmData;
 
 pub struct AdmGraph {
     l: VertexSet,
+    r: VertexSet,
     checks: VertexSet,
     pub candidates: VertexSet,
     adm_data: VertexMap<AdmData>,
 }
 
 impl AdmGraph {
-    pub fn new(graph: &EditGraph) -> Self {
+    fn new(graph: &EditGraph) -> Self {
         let mut adm_data = VertexMap::default();
         let l = graph.vertices().copied().collect();
         for u in graph.vertices() {
@@ -20,12 +21,16 @@ impl AdmGraph {
         }
         AdmGraph {
             l,
+            r: VertexSet::default(),
             checks: VertexSet::default(),
             candidates: VertexSet::default(),
             adm_data,
         }
     }
 
+    /*
+    Initialises candidates with vertices with degree <= p
+    */
     pub fn initialise_candidates(&mut self, p: usize) {
         for (u, adm_data) in &self.adm_data {
             if adm_data.t1.len() <= p {
@@ -34,229 +39,148 @@ impl AdmGraph {
         }
     }
 
-    //Also stores a maximal 2-packing
-    fn store_vias(&mut self, p: usize, v: &mut AdmData) {
-        let p1 = v.p1.clone();
-        v.delete_packing();
-
+    /*
+    Computes vias and a maximal 2-packing for a vertex being moved to R
+    */
+    fn compute_vias(&mut self, p: usize, v: &mut AdmData){
         let mut counter : VertexMap<i32> = VertexMap::default();
-        let t2_v = v.get_all_t2_vertices();
+        let mut t2_u = VertexSet::default();
+        let t1_v: HashSet<Vertex> = v.t1.intersection(&self.l).into_iter().copied().collect();
+        let n_in_r: Vec<Vertex> = v.n_in_r.iter().copied().collect();
 
-        for u in &v.n_in_r {
+        v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
+
+        for u in n_in_r {
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
-            u_adm_data.t1.remove(&v.id);
-            u_adm_data.n_in_r.insert(v.id);
-            if v.t1.len() > 0 { u_adm_data.vias.insert(v.id); }
-            
-            if p1.contains(u){
-                if u_adm_data.t1.len() > 0 {
-                    v.vias.insert(*u);
-                    v.p1.insert(*u);
+
+            for w in u_adm_data.t1.intersection(&self.l) {
+                if *w == v.id{
+                    continue;
                 }
-            }else {
-                for w in &t2_v {
-                    let num_vias_w = counter.entry(*w).or_insert(0);
-                    if u_adm_data.t1.contains(w) && num_vias_w < &mut (2 * p as i32) { 
-                        v.vias.insert(*u);
-                        *num_vias_w +=1;
+
+                let num_vias_w = counter.entry(*w).or_insert(0);
+                if !t2_u.contains(w){
+                    t2_u.insert(*w);
+                    v.vias.insert(u);
+                    *num_vias_w += 1;
+                    //If this is the first time we encounter a vertex in t2_l of v
+                    //need to check if we can add w,u as a path in the 2-packing for v
+                    if !t1_v.contains(w)  & v.can_add_t2_path_to_pack(w, &u) {
+                        v.add_t2_to_packing(w, &u);
+                    }
+                }else {
+                    if num_vias_w < &mut ((2 * p as i32) + 1) {
+                        v.vias.insert(u);
+                        *num_vias_w += 1;
                     }
                 }
             }
-            self.adm_data.insert(*u, u_adm_data);
+            self.adm_data.insert(u, u_adm_data);
         }
     }
-    
-    fn get_t2_vertices(&self, v: &AdmData) -> VertexSet {
-        let mut t2_vertices : VertexSet = VertexSet::default();
-        for u in &v.p1 {
-            let u_t1_vertices = self.adm_data.get(&u).unwrap().t1.clone();
-            for x  in u_t1_vertices.difference(&v.t1) {
-                if x != &v.id{
-                    t2_vertices.insert(*x);
-                }
-            }
-        }
-        t2_vertices
-    }
-    
-    fn get_t3_vertices(&self, v: &AdmData) -> VertexSet {
-        let mut t3_vertices = VertexSet::default();
-        for u in &v.p1 {
+
+    /*
+        Fetches all the vertices in L that is in T1, T2 and T3 of v
+    */
+    fn identify(&self, v: &AdmData)-> VertexSet{
+        let mut t: VertexSet = v.t1.intersection(&self.l).cloned().collect();
+
+        for u in v.t1.intersection(&self.r){
             let u_adm_data = self.adm_data.get(&u).unwrap();
-            let t2_from_u = self.get_t2_vertices(u_adm_data);
-            for x  in t2_from_u.difference(&v.t1) {
-                if x != &v.id{
-                    t3_vertices.insert(*x);
-                }
+
+            //identify t2_u
+            for w in u_adm_data.t1.intersection(&self.l) {
+                t.insert(*w);
             }
-        }
-        t3_vertices
-    }
-    
-    fn update_t1_of_v(&mut self, v:&AdmData, u: &mut AdmData) {
-        u.t1.remove(&v.id);
-        u.n_in_r.insert(v.id);
-        
-        for x in &v.t1{
-            if !u.is_an_endpoint_in_pack(x) {
-                u.add_t2_to_packing(x, &v.id);
-                return
-            }
-        }
-        
-        for x in &v.p1{
-            if !u.is_vertex_in_p(x) {
-                let x_adm_data = self.adm_data.get(&x).unwrap();
-                for y  in &x_adm_data.t1 {
-                    if !u.is_an_endpoint_in_pack(y) {
-                        u.add_t3_to_packing(y, &x, &v.id);
-                        return
+
+            //identify t3
+            for w in u_adm_data.t1.intersection(&self.r){
+                if w != &v.id {
+                    let w_adm_data = self.adm_data.get(&w).unwrap();
+                    for y in w_adm_data.t1.intersection(&self.l){
+                        t.insert(*y);
                     }
                 }
             }
         }
+        t
     }
-    
-    fn update_t2_of_v(&mut self, v:&Vertex, u: &mut AdmData) {
-        let w = u.remove_v_from_packing(v)[0];
+
+    /*
+        Simple update of a packing
+    */
+    fn simple_update(&mut self, u: &mut AdmData, v: Vertex){
+        if !u.is_an_endpoint_in_pack(&v){
+            return;
+        }
+
+        let path: Vec<Vertex> = u.remove_v_from_packing(&v);
+        let w = if path.len() > 0 { path[0] } else { v };
         let w_adm_data = self.adm_data.get(&w).unwrap();
-        
-        for x in  &w_adm_data.t1 {
-            if !u.is_an_endpoint_in_pack(x) {
+
+        //check if we can add a path of length 2
+        for x in w_adm_data.t1.intersection(&self.l){
+            if !u.is_an_endpoint_in_pack(x){
                 u.add_t2_to_packing(x, &w);
-                return
+                return;
             }
         }
-        
-        for x in &w_adm_data.p1 {
+
+        //check if we can add a path of length 3
+        //TODO is there an error in the pseudocode?
+        for x in w_adm_data.t1.intersection(&self.r){
+            if u.t2.contains(x) | u.t3.contains(x){
+                continue;
+            }
             let x_adm_data = self.adm_data.get(&x).unwrap();
-            if !u.is_vertex_in_p(x) {
-                for y  in &x_adm_data.t1 {
-                    if !u.is_an_endpoint_in_pack(y) {
-                        u.add_t3_to_packing(y, &w, x);
-                        return
-                    }
+            for y in x_adm_data.t1.intersection(&self.l){
+                if !u.is_an_endpoint_in_pack(&y){
+                    u.add_t3_to_packing(&y, x, &w);
                 }
             }
         }
-    }
-    
-    fn update_t3_of_v(&mut self, v:&Vertex, u: &mut AdmData) {
-        let p = u.remove_v_from_packing(&v);
-        let s = p[0];//p1
-        let w = p[1];//p2
-        let w_adm_data = self.adm_data.get(&w).unwrap();
-        
-        for x in  &w_adm_data.t1 {
-            if !u.is_an_endpoint_in_pack(x) {
-                u.add_t3_to_packing(x, &s, &w);
-                return
-            }
-        }
-        
-        let s_adm_data = self.adm_data.get(&s).unwrap();
-        for x in  &s_adm_data.p1 {
-            let x_adm_data = self.adm_data.get(&x).unwrap();
-            if !u.is_vertex_in_p(x) {
-                for y  in &x_adm_data.t1 {
-                    if !u.is_an_endpoint_in_pack(y) {
-                        u.add_t3_to_packing(y, &s, x);
-                        return
-                    }
-                }
-            }
-        }
-    }
-    
-    fn do_maximal_check(&mut self, p: usize, v:&mut AdmData) -> bool{
-        v.delete_packing();
-
-        'main: for t in v.n_in_r.clone() {
-            let t_adm_data =  self.adm_data.get(&t).unwrap();
-            for s in  &t_adm_data.t1 {
-                if !v.is_an_endpoint_in_pack(s){
-                    v.add_t2_to_packing(s, &t);
-                    continue 'main;
-                }
-            }
-
-            for s in v.vias.clone() {
-                if !v.is_vertex_in_p(&s){
-                    let s_adm_data =  self.adm_data.get(&s).unwrap();
-                    for y  in &s_adm_data.t1 {
-                        if !v.is_vertex_in_p(y){
-                            v.add_t3_to_packing(y, &t, &s);
-                            continue 'main;
-                        }
-                    }
-                }
-            }    
-        }
-        v.size_of_packing() <= p
     }
 
-    fn do_maximum_check(&mut self, p: usize, v:&mut AdmData){
-        
-    }
-    
-    fn do_checks(&mut self, p: usize){
-        let checks = mem::take(&mut self.checks);
-        
-        for v in checks {
-            let mut v_adm_data = self.adm_data.remove(&v).unwrap();
-            if v_adm_data.size_of_packing() <= p{
-                let maximal_check = self.do_maximal_check(p, &mut v_adm_data);
-                if maximal_check {
-                    //TODO MAXIMUM
-                    self.candidates.insert(v);
-                }
+    fn maximal_update(&mut self, u: &mut AdmData){
+        for w in u.n_in_r.difference(&u.t1){
+            let w_adm_data = self.adm_data.get(&w).unwrap();
+            for x in &w_adm_data.vias{
+                //TODO
             }
-            self.adm_data.insert(v, v_adm_data);
         }
     }
-    
-    fn update_v(&mut self, p: usize, v:&mut AdmData) {
-        self.candidates.remove(&v.id);
-        self.l.remove(&v.id);
-        
-        let t2_v = self.get_t2_vertices(v);
-        let t3_v = self.get_t3_vertices(v);//TODO t3 - t2
-        
-        self.store_vias(p,v);
-        
-        for u in &v.t1 {
-            let mut u_adm_data = self.adm_data.remove(u).unwrap();
-            self.update_t1_of_v(v, &mut u_adm_data);
-            self.checks.insert(*u);
-            self.adm_data.insert(*u, u_adm_data);
-        }
-        
-        for u in &t2_v{
-            let mut u_adm_data = self.adm_data.remove(u).unwrap();
-            self.update_t2_of_v(&v.id, &mut u_adm_data);
-            self.checks.insert(*u);
-            self.adm_data.insert(*u, u_adm_data);
-        }
-        
-        for  u in &t3_v{
-            let mut u_adm_data = self.adm_data.remove(u).unwrap();
-            self.update_t3_of_v(&v.id, &mut u_adm_data);
-            self.checks.insert(*u);
-            self.adm_data.insert(*u, u_adm_data);
+
+    //fn maximum_update(&mut self, v: &mut AdmData){}
+
+    fn update(&mut self, p: usize, v:&Vertex){
+        let mut v_adm_data = self.adm_data.remove(&v).unwrap();
+        let t = self.identify(&v_adm_data);
+        self.compute_vias(p, &mut v_adm_data);
+        self.adm_data.insert(*v, v_adm_data);
+
+        for u in t{
+            let mut u_adm_data = self.adm_data.remove(&u).unwrap();
+            self.simple_update(&mut u_adm_data, *v);
+            if u_adm_data.size_of_packing() <= p{
+                self.maximal_update(&mut u_adm_data);
+            }
+            self.adm_data.insert(u, u_adm_data);
         }
     }
-    
+
     pub fn get_next_v_in_ordering(&mut self, p: usize) -> Option<Vertex>{
         let v = self.candidates.iter().next();
-        match v { 
+
+        match v {
             Some(&v) => {
-                let mut v_adm_data = self.adm_data.remove(&v).unwrap();
-                self.update_v(p, &mut v_adm_data);
-                self.adm_data.insert(v, v_adm_data);
+                self.candidates.remove(&v);
+                self.l.remove(&v);
+                self.r.insert(v);
+                //TODO updates
                 Some(v)
             }
             None => None
         }
-        
+
     }
 }

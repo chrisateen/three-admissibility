@@ -2,10 +2,10 @@ use graphbench::graph::{Vertex, VertexMap, VertexSet};
 
 pub struct AdmData {
     pub id: Vertex,
-    pub t1: VertexSet,
     pub n_in_r: VertexSet,
-    pub p1: VertexSet,
-    pub p2: VertexSet,
+    pub t1: VertexSet,
+    pub t2: VertexSet,
+    pub t3: VertexSet,
     pub vias: VertexSet,
     pub packing: VertexMap<Vec<Vertex>>,
 }
@@ -16,55 +16,63 @@ impl AdmData {
             id: v,
             n_in_r: VertexSet::default(),
             t1: v_neighbours,
-            p1: VertexSet::default(),
-            p2: VertexSet::default(),
+            t2: VertexSet::default(),
+            t3: VertexSet::default(),
             vias: VertexSet::default(),
             packing: VertexMap::default(),
         }
     }
 
-    pub fn size_of_packing(&self) -> usize{
-        self.t1.len() + self.packing.len()
+    pub fn can_add_t2_path_to_pack(&mut self, t2: &Vertex, t1: &Vertex) -> bool {
+        !self.packing.contains_key(t2) & !self.t1.contains(t1)
     }
-    
+
+    pub fn can_add_t3_path_to_pack(&mut self, t3: &Vertex, t2: &Vertex, t1: &Vertex) -> bool {
+        !self.packing.contains_key(t3) & !self.t1.contains(t1) & !self.t2.contains(t2)
+    }
+    pub fn add_t2_to_packing(&mut self, t2: &Vertex, t1: &Vertex) {
+        self.packing.insert(*t2, vec![*t1]);
+        self.t1.insert(*t1);
+        self.t2.insert(*t2);
+    }
+
+    pub fn add_t3_to_packing(&mut self, t3: &Vertex, t1: &Vertex,  t2: &Vertex) {
+        self.packing.insert(*t3, vec![*t1, *t2]);
+        self.t1.insert(*t1);
+        self.t2.insert(*t2);
+        self.t3.insert(*t3);
+    }
+
+    pub fn delete_packing(&mut self) {
+        self.packing.clear();
+        self.t2.clear();
+        self.t3.clear();
+    }
+
+    pub fn is_an_endpoint_in_pack(&self, v: &Vertex) -> bool {
+        (self.t1.contains(v) & !self.n_in_r.contains(v)) | self.packing.contains_key(v)
+    }
+
     pub fn remove_v_from_packing(&mut self, v: &Vertex) ->  Vec<Vertex> {
+        if (self.t1.contains(v) & !self.n_in_r.contains(v)){
+            self.t1.remove(v);
+            self.n_in_r.insert(*v);
+            return vec![];
+        }
+
         let p = self.packing.remove(v).unwrap();
-        self.p1.remove(&p[0]);
-        if p.len() == 2 {
-            self.t1.remove(&p[1]);
+        self.t1.remove(&p[0]);
+        if p.len() == 1 {
+            self.t2.remove(v);
+        }else {
+            self.t2.remove(&p[1]);
+            self.t3.remove(v);
         }
         p
     }
-    
-    pub fn is_an_endpoint_in_pack(&self, v: &Vertex) -> bool {
-        self.t1.contains(v) | self.packing.contains_key(v)
-    }
-    
-    pub fn add_t2_to_packing(&mut self, t2: &Vertex, p1: &Vertex) {
-        self.packing.insert(*t2, vec![*p1]);
-        self.p1.insert(*p1);
-    }
-    
-    pub fn add_t3_to_packing(&mut self, t3: &Vertex, p1: &Vertex,  p2: &Vertex) {
-        self.packing.insert(*t3, vec![*p1, *p2]);
-        self.p1.insert(*p1);
-        self.p2.insert(*p2);
-    }
-    
-    pub fn is_vertex_in_p(&self, v: &Vertex) -> bool {
-        self.p1.contains(v) | self.p2.contains(v)
-    }
 
-    pub fn get_all_t2_vertices(&self) -> VertexSet {
-        self.packing.iter()
-            .filter(|(_, p)| p.len() == 1)
-            .map(|(v, _)| *v)
-            .collect()
-    }
-    
-    pub fn delete_packing(&mut self) {
-        self.p1.clear();
-        self.p2.clear();
-        self.packing.clear();
+    pub fn size_of_packing(&self) -> usize{
+        let num_t1_l = self.t1.difference(&self.n_in_r).count();
+        num_t1_l + self.packing.len()
     }
 }

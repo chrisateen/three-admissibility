@@ -2,9 +2,11 @@ use clap::{Parser, Subcommand};
 use graphbench::io::LoadFromFile;
 use peak_alloc::PeakAlloc;
 
+mod admDataOld;
+mod admGraphOld;
+mod utils;
 mod admData;
 mod admGraph;
-mod utils;
 
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;
