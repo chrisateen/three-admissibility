@@ -6,13 +6,14 @@ use crate::admData::AdmData;
 pub struct AdmGraph {
     l: VertexSet,
     r: VertexSet,
-    checks: VertexSet,
     pub candidates: VertexSet,
     adm_data: VertexMap<AdmData>,
+    num_of_vertices: usize,
+    p: usize,
 }
 
 impl AdmGraph {
-    fn new(graph: &EditGraph) -> Self {
+    pub(crate) fn new(graph: &EditGraph, p: usize) -> Self {
         let mut adm_data = VertexMap::default();
         let l = graph.vertices().copied().collect();
         for u in graph.vertices() {
@@ -22,18 +23,19 @@ impl AdmGraph {
         AdmGraph {
             l,
             r: VertexSet::default(),
-            checks: VertexSet::default(),
             candidates: VertexSet::default(),
             adm_data,
+            num_of_vertices: graph.num_vertices(),
+            p,
         }
     }
 
     /*
     Initialises candidates with vertices with degree <= p
     */
-    pub fn initialise_candidates(&mut self, p: usize) {
+    pub fn initialise_candidates(&mut self) {
         for (u, adm_data) in &self.adm_data {
-            if adm_data.t1.len() <= p {
+            if adm_data.t1.len() <= self.p {
                 self.candidates.insert(*u);
             }
         }
@@ -42,7 +44,7 @@ impl AdmGraph {
     /*
     Computes vias and a maximal 2-packing for a vertex being moved to R
     */
-    fn compute_vias(&mut self, p: usize, v: &mut AdmData){
+    fn compute_vias(&mut self, v: &mut AdmData){
         let mut counter : VertexMap<i32> = VertexMap::default();
         let mut t2_u = VertexSet::default();
         let t1_v: HashSet<Vertex> = v.t1.intersection(&self.l).into_iter().copied().collect();
@@ -51,7 +53,7 @@ impl AdmGraph {
         v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
 
         for u in n_in_r {
-            let mut u_adm_data = self.adm_data.remove(&u).unwrap();
+            let u_adm_data = self.adm_data.remove(&u).unwrap();
 
             for w in u_adm_data.t1.intersection(&self.l) {
                 if *w == v.id{
@@ -69,7 +71,7 @@ impl AdmGraph {
                         v.add_t2_to_packing(w, &u);
                     }
                 }else {
-                    if num_vias_w < &mut ((2 * p as i32) + 1) {
+                    if num_vias_w < &mut ((2 * self.p as i32) + 1) {
                         v.vias.insert(u);
                         *num_vias_w += 1;
                     }
@@ -141,7 +143,10 @@ impl AdmGraph {
         }
     }
 
-    fn maximal_update(&mut self, u: &mut AdmData){
+    /*
+        Try to see if a disjoint path can be added to the packing of u
+     */
+    fn stage_1_update(&mut self, u: &mut AdmData){
         for w in u.n_in_r.difference(&u.t1){
             let w_adm_data = self.adm_data.get(&w).unwrap();
             for x in &w_adm_data.vias{
@@ -150,25 +155,49 @@ impl AdmGraph {
         }
     }
 
-    //fn maximum_update(&mut self, v: &mut AdmData){}
+    /*
+        Find an augmenting path to see if packing of u can be extended
+     */
+    fn stage_2_update(&mut self, u: &mut AdmData){}
 
-    fn update(&mut self, p: usize, v:&Vertex){
+
+    fn update(&mut self, v:&Vertex){
         let mut v_adm_data = self.adm_data.remove(&v).unwrap();
         let t = self.identify(&v_adm_data);
-        self.compute_vias(p, &mut v_adm_data);
+        self.compute_vias(&mut v_adm_data);
         self.adm_data.insert(*v, v_adm_data);
 
         for u in t{
+            //TODO find a way to do difference without causing ownership issue
+            if self.candidates.contains(&u){
+                continue;
+            }
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
-            if u_adm_data.size_of_packing() <= p{
-                self.maximal_update(&mut u_adm_data);
+
+            //check if a disjoint path can be added to packing of u
+            if u_adm_data.size_of_packing() <= self.p{
+                self.stage_1_update(&mut u_adm_data);
+            }
+            //If size of packing is still p after simple update
+            //then do augmenting path to see if packing of u can be extended
+            if u_adm_data.size_of_packing() <= self.p{
+                self.stage_2_update(&mut u_adm_data);
+            }
+
+            //If size of packing is still p then add to candidates
+            if u_adm_data.size_of_packing() <= self.p{
+                self.candidates.insert(u);
             }
             self.adm_data.insert(u, u_adm_data);
         }
     }
 
-    pub fn get_next_v_in_ordering(&mut self, p: usize) -> Option<Vertex>{
+    pub fn is_all_vertices_in_r_or_candidates(&self) -> bool {
+        return self.r.len() + self.candidates.len() == self.num_of_vertices;
+    }
+
+    pub fn get_next_v_in_ordering(&mut self) -> Option<Vertex>{
         let v = self.candidates.iter().next();
 
         match v {
@@ -176,7 +205,7 @@ impl AdmGraph {
                 self.candidates.remove(&v);
                 self.l.remove(&v);
                 self.r.insert(v);
-                //TODO updates
+                self.update(&v);
                 Some(v)
             }
             None => None

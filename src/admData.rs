@@ -54,7 +54,7 @@ impl AdmData {
     }
 
     pub fn remove_v_from_packing(&mut self, v: &Vertex) ->  Vec<Vertex> {
-        if (self.t1.contains(v) & !self.n_in_r.contains(v)){
+        if self.t1.contains(v) & !self.n_in_r.contains(v){
             self.t1.remove(v);
             self.n_in_r.insert(*v);
             return vec![];

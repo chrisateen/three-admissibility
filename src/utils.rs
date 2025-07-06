@@ -6,13 +6,13 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::io::{BufRead, Write};
 
-fn load_graph(network_path: String, network: &String) -> EditGraph {
+pub fn load_graph(network_path: String, network: &String) -> EditGraph {
     let file_dir = format!("{}/{}.txt.gz", network_path, network);
     EditGraph::from_gzipped(&file_dir)
         .unwrap_or_else(|_| panic!("Error occurred loading graph {}", network))
 }
 
-fn save_ordering_to_file(path: String, network: String, order: Vec<Vertex>) {
+pub fn save_ordering_to_file(path: String, network: String, order: Vec<Vertex>) {
     let folder = PathBuf::from(path);;
     std::fs::create_dir_all(&folder).unwrap();
     let file_path = folder.join(network.as_str().to_owned() + ".txt.gz");
