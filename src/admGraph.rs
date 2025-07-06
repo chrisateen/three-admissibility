@@ -112,6 +112,7 @@ impl AdmGraph {
         Simple update of a packing
     */
     fn simple_update(&mut self, u: &mut AdmData, v: Vertex){
+        //TODO ensure n_r is updated correctly
         if !u.is_an_endpoint_in_pack(&v){
             return;
         }
@@ -153,10 +154,24 @@ impl AdmGraph {
         Try to see if a disjoint path can be added to the packing of u
      */
     fn stage_1_update(&mut self, u: &mut AdmData){
-        for w in u.n_in_r.difference(&u.t1){
+        let n_r_u_not_in_pack: VertexSet = u.n_in_r.difference(&u.t1).cloned().collect();
+        for w in n_r_u_not_in_pack{
             let w_adm_data = self.adm_data.get(&w).unwrap();
-            for x in &w_adm_data.vias{
-                //TODO
+            //After w was moved to R some vertices in t1_l of u may have moved to r
+            let t1_to_check: VertexSet = w_adm_data.t1.intersection(&self.r).cloned().collect();
+            for x in w_adm_data.vias.union(&t1_to_check) {
+                let x_adm_data = self.adm_data.get(&x).unwrap();
+                for y in x_adm_data.t1.intersection(&self.l){
+                    if !u.is_an_endpoint_in_pack(&y){
+                        if u.n_in_r.contains(&x) {
+                            //If there is a shorter path to y add it
+                            u.add_t2_to_packing(&y,x);
+                        }else {
+                            u.add_t3_to_packing(&y, x, &w);
+                        }
+                        return;
+                    }
+                }
             }
         }
     }
