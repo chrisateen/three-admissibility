@@ -129,7 +129,6 @@ impl AdmGraph {
         }
 
         //check if we can add a path of length 3
-        //TODO is there an error in the pseudocode?
         for x in w_adm_data.t1.intersection(&self.r){
             if u.t2.contains(x) | u.t3.contains(x){
                 continue;
@@ -137,6 +136,13 @@ impl AdmGraph {
             let x_adm_data = self.adm_data.get(&x).unwrap();
             for y in x_adm_data.t1.intersection(&self.l){
                 if !u.is_an_endpoint_in_pack(&y){
+                    //Check if there is a shorter path to y
+                    if u.n_in_r.contains(&x) { //TODO double check this works
+                        //as there is a shorter path to y
+                        //check if there is another path of length 3 through w
+                        u.add_t2_to_packing(&y,x);
+                        break;
+                    }
                     u.add_t3_to_packing(&y, x, &w);
                 }
             }
