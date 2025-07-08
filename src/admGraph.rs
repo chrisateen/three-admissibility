@@ -137,6 +137,7 @@ impl AdmGraph {
             for y in x_adm_data.t1.intersection(&self.l){
                 if !u.is_an_endpoint_in_pack(&y){
                     //Check if there is a shorter path to y
+                    //TODO use editgraph to check N(u)
                     if u.n_in_r.contains(&x) {
                         //as there is a shorter path to y
                         //check if there is another path of length 3 through w
@@ -162,6 +163,7 @@ impl AdmGraph {
                 let x_adm_data = self.adm_data.get(&x).unwrap();
                 for y in x_adm_data.t1.intersection(&self.l){
                     if !u.is_an_endpoint_in_pack(&y){
+                        //TODO use editgraph to check N(u)
                         if u.n_in_r.contains(&x) {
                             //If there is a shorter path to y add it
                             u.add_t2_to_packing(&y,x);
@@ -191,10 +193,9 @@ impl AdmGraph {
         self.adm_data.insert(*v, v_adm_data);
 
         for u in t{
-            //TODO commented this out as I need N_R to be updated correctly
-            // if self.candidates.contains(&u){
-            //     continue;
-            // }
+            if self.candidates.contains(&u){
+                continue;
+            }
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
 
