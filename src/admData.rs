@@ -76,3 +76,50 @@ impl AdmData {
         num_t1_l + self.packing.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use graphbench::graph::{VertexSet, VertexMap};
+
+    fn vertex(v: usize) -> Vertex {
+        v as Vertex
+    }
+
+    #[test]
+    fn can_add_t2_path_to_pack_returns_true_if_vertices_are_not_in_pack() {
+        let mut adm = AdmData::new(vertex(1),VertexSet::default());;
+        adm.packing.insert(vertex(3), vec![2]);
+        adm.t1.insert(vertex(2));
+        adm.t2.insert(vertex(3));
+
+        assert!(adm.can_add_t2_path_to_pack(&vertex(5), &vertex(4)));
+        assert!(adm.can_add_t2_path_to_pack(&vertex(7), &vertex(6)));
+    }
+
+    #[test]
+    fn can_add_t2_path_to_pack_returns_false_if_vertices_are_in_pack() {
+        let mut adm = AdmData::new(vertex(1),VertexSet::default());;
+        adm.packing.insert(vertex(3), vec![2]);
+        adm.t1.insert(vertex(2));
+        adm.t2.insert(vertex(3));
+
+        assert!(!adm.can_add_t2_path_to_pack(&vertex(3), &vertex(4))); // 3 is already in t2
+        assert!(!adm.can_add_t2_path_to_pack(&vertex(5), &vertex(2))); // 2 is already in t1
+    }
+
+    #[test]
+    fn delete_packing_clears_packing_t2_and_t3() {
+        let mut adm = AdmData::new(vertex(1),VertexSet::default());
+        adm.packing.insert(vertex(4), vec![2,3]);
+        adm.t1.insert(vertex(2));
+        adm.t2.insert(vertex(3));
+        adm.t3.insert(vertex(4));
+
+        adm.delete_packing();
+
+        assert!(adm.packing.is_empty());
+        assert!(adm.t2.is_empty());
+        assert!(adm.t3.is_empty());
+    }
+}
