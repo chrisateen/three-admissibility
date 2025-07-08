@@ -112,7 +112,6 @@ impl AdmGraph {
         Simple update of a packing
     */
     fn simple_update(&mut self, u: &mut AdmData, v: Vertex){
-        //TODO ensure n_r is updated correctly
         if !u.is_an_endpoint_in_pack(&v){
             return;
         }
@@ -138,7 +137,7 @@ impl AdmGraph {
             for y in x_adm_data.t1.intersection(&self.l){
                 if !u.is_an_endpoint_in_pack(&y){
                     //Check if there is a shorter path to y
-                    if u.n_in_r.contains(&x) { //TODO double check this works
+                    if u.n_in_r.contains(&x) {
                         //as there is a shorter path to y
                         //check if there is another path of length 3 through w
                         u.add_t2_to_packing(&y,x);
@@ -182,6 +181,9 @@ impl AdmGraph {
     fn stage_2_update(&mut self, u: &mut AdmData){}
 
 
+    /*
+        Update data structures now that vertx v is moving to R
+    */
     fn update(&mut self, v:&Vertex){
         let mut v_adm_data = self.adm_data.remove(&v).unwrap();
         let t = self.identify(&v_adm_data);
@@ -189,10 +191,10 @@ impl AdmGraph {
         self.adm_data.insert(*v, v_adm_data);
 
         for u in t{
-            //TODO find a way to do difference without causing ownership issue
-            if self.candidates.contains(&u){
-                continue;
-            }
+            //TODO commented this out as I need N_R to be updated correctly
+            // if self.candidates.contains(&u){
+            //     continue;
+            // }
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
 
