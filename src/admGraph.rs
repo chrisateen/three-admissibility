@@ -236,3 +236,30 @@ impl AdmGraph {
 
     }
 }
+
+#[cfg(test)]
+mod test_adm_graph {
+    use super::*;
+    use graphbench::editgraph::EditGraph;
+    use graphbench::graph::{EdgeSet, MutableGraph};
+
+    #[test]
+    fn initialise_candidates_should_add_vertices_with_degree_p_or_less_to_candidates() {
+        let mut graph = EditGraph::new();
+        let edges: EdgeSet = [(1, 2), (1, 3), (1, 4), (2, 5), (2, 6), (3, 7)]
+            .iter()
+            .cloned()
+            .collect();
+        for (u, v) in edges.iter() {
+            graph.add_edge(u, v);
+        }
+        let mut adm_graph = AdmGraph::new(&graph, 2);
+
+        adm_graph.initialise_candidates();
+
+        assert_eq!(
+            adm_graph.candidates,
+            [3, 4, 5, 6, 7].iter().cloned().collect()
+        );
+    }
+}
