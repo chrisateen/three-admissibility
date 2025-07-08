@@ -263,4 +263,26 @@ mod test_adm_graph {
             [3, 4, 5, 6, 7].iter().cloned().collect()
         );
     }
+
+    #[test]
+    fn is_all_vertices_in_r_or_candidates_returns_true_if_all_vertices_are_in_r_or_candidates() {
+        let graph = EditGraph::new();
+        let p = 1;
+        let mut adm_graph = AdmGraph::new(&graph, p);
+        adm_graph.r = vec![1,2,3].into_iter().collect();
+        adm_graph.candidates = vec![4,5].into_iter().collect();
+        adm_graph.num_of_vertices = 5;
+        assert_eq!(adm_graph.is_all_vertices_in_r_or_candidates(), true);
+    }
+
+    #[test]
+    fn is_all_vertices_in_r_or_candidates_returns_false_if_some_vertices_are_not_in_r_or_candidates() {
+        let graph = EditGraph::new();
+        let p = 1;
+        let mut adm_graph = AdmGraph::new(&graph, p);
+        adm_graph.r = vec![1,2,3].into_iter().collect();
+        adm_graph.candidates = vec![4,5].into_iter().collect();
+        adm_graph.num_of_vertices = 10;
+        assert_eq!(adm_graph.is_all_vertices_in_r_or_candidates(), false);
+    }
 }
