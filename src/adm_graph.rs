@@ -1,19 +1,21 @@
-use std::collections::HashSet;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
-use crate::admData::AdmData;
+use crate::adm_data::AdmData;
+use crate::vias::Vias;
 
-pub struct AdmGraph {
+pub(crate) struct AdmGraph<'a> {
     l: VertexSet,
     r: VertexSet,
     pub candidates: VertexSet,
     adm_data: VertexMap<AdmData>,
     num_of_vertices: usize,
     p: usize,
+    graph: &'a EditGraph,
+    vias: Vias
 }
 
-impl AdmGraph {
-    pub(crate) fn new(graph: &EditGraph, p: usize) -> Self {
+impl<'a> AdmGraph<'a> {
+    pub(crate) fn new(graph: &'a EditGraph, p: usize) -> Self {
         let mut adm_data = VertexMap::default();
         let l = graph.vertices().copied().collect();
         for u in graph.vertices() {
@@ -27,6 +29,8 @@ impl AdmGraph {
             adm_data,
             num_of_vertices: graph.num_vertices(),
             p,
+            graph,
+            vias: Vias::new(p),
         }
     }
 
@@ -45,63 +49,53 @@ impl AdmGraph {
     Computes vias and a maximal 2-packing for a vertex being moved to R
     */
     fn compute_vias(&mut self, v: &mut AdmData){
-        let mut counter : VertexMap<i32> = VertexMap::default();
-        let mut t2_u = VertexSet::default();
-        let t1_v: HashSet<Vertex> = v.t1.intersection(&self.l).into_iter().copied().collect();
-        let n_in_r: Vec<Vertex> = v.n_in_r.iter().copied().collect();
-
         v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
+        let v_n_in_r = v.n_in_r.clone();
 
-        for u in n_in_r {
-            let u_adm_data = self.adm_data.remove(&u).unwrap();
+        for u in v_n_in_r {
+            let u_adm_data = self.adm_data.get(&u).unwrap();
 
-            for w in u_adm_data.t1.intersection(&self.l) {
-                if *w == v.id{
-                    continue;
+            for w in u_adm_data.t1.difference(&self.l) {
+                if !v.is_v_in_pack(&w){
+                    v.add_t2_to_packing(&w, &u);
                 }
-
-                let num_vias_w = counter.entry(*w).or_insert(0);
-                if !t2_u.contains(w){
-                    t2_u.insert(*w);
-                    v.vias.insert(u);
-                    *num_vias_w += 1;
-                    //If this is the first time we encounter a vertex in t2_l of v
-                    //need to check if we can add w,u as a path in the 2-packing for v
-                    if !t1_v.contains(w)  & v.can_add_t2_path_to_pack(w, &u) {
-                        v.add_t2_to_packing(w, &u);
-                    }
-                }else {
-                    if num_vias_w < &mut ((2 * self.p as i32) + 1) {
-                        v.vias.insert(u);
-                        *num_vias_w += 1;
-                    }
-                }
+                self.vias.add_a_via(v.id, *w, u);
             }
-            self.adm_data.insert(u, u_adm_data);
+
+            for w in v.t1.difference(&self.l) {
+                // note that as v is moving to R
+                // w is in t2 of u with v as a via
+                self.vias.add_a_via(u, *w, v.id);
+            }
         }
     }
 
     /*
         Fetches all the vertices in L that is in T1, T2 and T3 of v
     */
-    fn identify(&self, v: &AdmData)-> VertexSet{
+    fn collect_targets(&self, v: &AdmData) -> VertexSet{
         let mut t: VertexSet = v.t1.intersection(&self.l).cloned().collect();
+        let t1_t2: VertexSet  = v.t1.union(&v.t2).cloned().collect();
 
-        for u in v.t1.intersection(&self.r){
+        for u in t1_t2.intersection(&self.r) {
+            if *u == v.id { continue;}
             let u_adm_data = self.adm_data.get(&u).unwrap();
 
-            //identify t2_u
             for w in u_adm_data.t1.intersection(&self.l) {
                 t.insert(*w);
             }
 
-            //identify t3
-            for w in u_adm_data.t1.intersection(&self.r){
-                if w != &v.id {
-                    let w_adm_data = self.adm_data.get(&w).unwrap();
-                    for y in w_adm_data.t1.intersection(&self.l){
-                        t.insert(*y);
-                    }
+            if !self.graph.adjacent(&u, &v.id){
+                continue;
+            };
+
+            //if u in N(v) then we need to use 2-packing of u to get vertices t3 of v
+            for w in u_adm_data.t1.intersection(&self.r) {
+                if *w == v.id { continue;}
+                let w_adm_data = self.adm_data.get(&w).unwrap();
+
+                for x in w_adm_data.t1.intersection(&self.l) {
+                    t.insert(*x);
                 }
             }
         }
@@ -112,7 +106,7 @@ impl AdmGraph {
         Simple update of a packing
     */
     fn simple_update(&mut self, u: &mut AdmData, v: Vertex){
-        if !u.is_an_endpoint_in_pack(&v){
+        if !u.is_v_in_pack(&v){
             return;
         }
 
@@ -122,7 +116,7 @@ impl AdmGraph {
 
         //check if we can add a path of length 2
         for x in w_adm_data.t1.intersection(&self.l){
-            if !u.is_an_endpoint_in_pack(x){
+            if !u.is_v_in_pack(x){
                 u.add_t2_to_packing(x, &w);
                 return;
             }
@@ -130,21 +124,20 @@ impl AdmGraph {
 
         //check if we can add a path of length 3
         for x in w_adm_data.t1.intersection(&self.r){
-            if u.t2.contains(x) | u.t3.contains(x){
+            if u.t2.contains(x) | u.t3.contains(x) | (u.id == v) {
                 continue;
             }
             let x_adm_data = self.adm_data.get(&x).unwrap();
             for y in x_adm_data.t1.intersection(&self.l){
-                if !u.is_an_endpoint_in_pack(&y){
-                    //Check if there is a shorter path to y
-                    //TODO use editgraph to check N(u)
-                    if u.n_in_r.contains(&x) {
-                        //as there is a shorter path to y
-                        //check if there is another path of length 3 through w
+                if !u.is_v_in_pack(&y){
+                    //Check if there is a shorter path to y (i.e u,x,y)
+                    // if so add the shorter path instead
+                    if self.graph.adjacent(&u.id, x) {
                         u.add_t2_to_packing(&y,x);
-                        break;
+                    }else {
+                        u.add_t3_to_packing(&y, x, &w);
                     }
-                    u.add_t3_to_packing(&y, x, &w);
+                    return;
                 }
             }
         }
@@ -154,23 +147,32 @@ impl AdmGraph {
         Try to see if a disjoint path can be added to the packing of u
      */
     fn stage_1_update(&mut self, u: &mut AdmData){
-        let n_r_u_not_in_pack: VertexSet = u.n_in_r.difference(&u.t1).cloned().collect();
-        for w in n_r_u_not_in_pack{
-            let w_adm_data = self.adm_data.get(&w).unwrap();
-            //After w was moved to R some vertices in t1_l of u may have moved to r
-            let t1_to_check: VertexSet = w_adm_data.t1.intersection(&self.r).cloned().collect();
-            for x in w_adm_data.vias.union(&t1_to_check) {
-                let x_adm_data = self.adm_data.get(&x).unwrap();
-                for y in x_adm_data.t1.intersection(&self.l){
-                    if !u.is_an_endpoint_in_pack(&y){
-                        //TODO use editgraph to check N(u)
-                        if u.n_in_r.contains(&x) {
-                            //If there is a shorter path to y add it
-                            u.add_t2_to_packing(&y,x);
-                        }else {
-                            u.add_t3_to_packing(&y, x, &w);
-                        }
-                        return;
+        let t1 : VertexSet = u.t1.intersection(&self.l).cloned().collect();
+        let t3_and_t2 : VertexSet = self.collect_targets(u).difference(&t1).cloned().collect();
+
+        for w in u.n_in_r.clone(){
+            if u.is_v_in_pack(&w){continue;}
+
+            for y in &t3_and_t2{
+                if u.is_v_in_pack(&y){continue;}
+                let w_adm_data = self.adm_data.get(&w).unwrap();
+
+                //first check if w,y is a path
+                if w_adm_data.t1.contains(y){
+                    u.add_t2_to_packing(y, &w);
+                    return;
+                }
+
+                let x_vias = self.vias.get_vias(w, *y);
+                if x_vias == None { continue; }
+
+                for x in x_vias.unwrap(){
+                    if u.is_v_in_pack(x){ continue;}
+
+                    if self.graph.adjacent(&u.id, x) {
+                        u.add_t2_to_packing(y,x);
+                    }else {
+                        u.add_t3_to_packing(y,x, &w);
                     }
                 }
             }
@@ -188,7 +190,7 @@ impl AdmGraph {
     */
     fn update(&mut self, v:&Vertex){
         let mut v_adm_data = self.adm_data.remove(&v).unwrap();
-        let t = self.identify(&v_adm_data);
+        let t = self.collect_targets(&v_adm_data);
         self.compute_vias(&mut v_adm_data);
         self.adm_data.insert(*v, v_adm_data);
 
@@ -218,11 +220,11 @@ impl AdmGraph {
     }
 
     pub fn is_all_vertices_in_r_or_candidates(&self) -> bool {
-        return self.r.len() + self.candidates.len() == self.num_of_vertices;
+        self.r.len() + self.candidates.len() == self.num_of_vertices
     }
 
     pub fn get_next_v_in_ordering(&mut self) -> Option<Vertex>{
-        let v = self.candidates.iter().next();
+        let v = self.candidates.iter().next();;
 
         match v {
             Some(&v) => {

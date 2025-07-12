@@ -6,7 +6,6 @@ pub struct AdmData {
     pub t1: VertexSet,
     pub t2: VertexSet,
     pub t3: VertexSet,
-    pub vias: VertexSet,
     pub packing: VertexMap<Vec<Vertex>>,
 }
 
@@ -18,7 +17,6 @@ impl AdmData {
             t1: v_neighbours,
             t2: VertexSet::default(),
             t3: VertexSet::default(),
-            vias: VertexSet::default(),
             packing: VertexMap::default(),
         }
     }
@@ -48,9 +46,9 @@ impl AdmData {
         self.t2.clear();
         self.t3.clear();
     }
-
-    pub fn is_an_endpoint_in_pack(&self, v: &Vertex) -> bool {
-        (self.t1.contains(v) & !self.n_in_r.contains(v)) | self.packing.contains_key(v)
+    
+    pub fn is_v_in_pack(&self, v: &Vertex) -> bool {
+        self.t1.contains(v) || self.t2.contains(v) || self.t3.contains(v)
     }
 
     pub fn remove_v_from_packing(&mut self, v: &Vertex) ->  Vec<Vertex> {
