@@ -17,12 +17,15 @@ impl Vias {
     pub fn add_a_via(&mut self, v:  Vertex, t2_v: Vertex, via: Vertex) -> bool {
         let v_entries = self.vias.entry(v).or_insert(VertexMap::default());
         let t2_v_entries = v_entries.entry(t2_v).or_insert(VertexSet::default());
-
-        //TODO panic if vias > 2p+1
-        if t2_v_entries.len() >= (2*self.p + 1){
+        
+        let max_vias = (2*self.p + 1);
+        
+        if t2_v_entries.len() > max_vias{
+            panic!("Number of vias for {} is too large", t2_v);
+        }
+        if t2_v_entries.len() == max_vias{
             return false;
         }
-
         t2_v_entries.insert(via);
         true
     }
@@ -33,8 +36,17 @@ impl Vias {
 
     }
 
-    pub fn get_vias(&self, v:  Vertex, t2_v: Vertex) -> &VertexSet {
-        let v_entries = self.vias.get(&v).unwrap();
-        v_entries.get(&t2_v).unwrap()
+    pub fn get_vias(&self, v:  Vertex, t2_v: Vertex) -> Option<&VertexSet> {
+        let v_entries = self.vias.get(&v);
+        match v_entries {
+            Some(v_entries) => {
+                let vias = v_entries.get(&t2_v);
+                match vias {
+                    Some(vias) => Some(vias),
+                    None => None
+                }
+            }
+            None => None
+        }
     }
 }

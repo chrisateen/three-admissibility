@@ -1,6 +1,6 @@
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
-use crate::admData::AdmData;
+use crate::adm_data::AdmData;
 use crate::vias::Vias;
 
 pub(crate) struct AdmGraph<'a> {
@@ -163,9 +163,11 @@ impl<'a> AdmGraph<'a> {
                     return;
                 }
 
-                //TODO why is a via missing
-                for x in self.vias.get_vias(w, *y){
-                    if u.is_v_in_pack(&x){ continue;}
+                let x_vias = self.vias.get_vias(w, *y);
+                if x_vias == None { continue; }
+
+                for x in x_vias.unwrap(){
+                    if u.is_v_in_pack(x){ continue;}
 
                     if self.graph.adjacent(&u.id, x) {
                         u.add_t2_to_packing(y,x);
