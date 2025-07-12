@@ -20,14 +20,7 @@ impl AdmData {
             packing: VertexMap::default(),
         }
     }
-
-    pub fn can_add_t2_path_to_pack(&mut self, t2: &Vertex, t1: &Vertex) -> bool {
-        !self.packing.contains_key(t2) & !self.t1.contains(t1)
-    }
-
-    // pub fn can_add_t3_path_to_pack(&mut self, t3: &Vertex, t2: &Vertex, t1: &Vertex) -> bool {
-    //     !self.packing.contains_key(t3) & !self.t1.contains(t1) & !self.t2.contains(t2)
-    // }
+    
     pub fn add_t2_to_packing(&mut self, t2: &Vertex, t1: &Vertex) {
         self.packing.insert(*t2, vec![*t1]);
         self.t1.insert(*t1);
@@ -85,28 +78,6 @@ mod tests {
     }
 
     #[test]
-    fn can_add_t2_path_to_pack_returns_true_if_vertices_are_not_in_pack() {
-        let mut adm = AdmData::new(vertex(1),VertexSet::default());;
-        adm.packing.insert(vertex(3), vec![2]);
-        adm.t1.insert(vertex(2));
-        adm.t2.insert(vertex(3));
-
-        assert_eq!(adm.can_add_t2_path_to_pack(&vertex(5), &vertex(4)), true);
-        assert_eq!(adm.can_add_t2_path_to_pack(&vertex(7), &vertex(6)), true);
-    }
-
-    #[test]
-    fn can_add_t2_path_to_pack_returns_false_if_vertices_are_in_pack() {
-        let mut adm = AdmData::new(vertex(1),VertexSet::default());;
-        adm.packing.insert(vertex(3), vec![2]);
-        adm.t1.insert(vertex(2));
-        adm.t2.insert(vertex(3));
-
-        assert_eq!(adm.can_add_t2_path_to_pack(&vertex(3), &vertex(4)), false); // 3 is already in t2
-        assert_eq!(adm.can_add_t2_path_to_pack(&vertex(5), &vertex(2)), false); // 2 is already in t1
-    }
-
-    #[test]
     fn add_t2_to_packing_updates_correctly() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
 
@@ -148,29 +119,39 @@ mod tests {
     }
 
     #[test]
-    fn test_is_an_endpoint_in_pack_returns_true_if_v_in_t1_and_in_l() {
+    fn test_is_v_in_pack_returns_true_if_v_in_t1() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
         adm.t1.insert(vertex(2));
 
-        assert_eq!(adm.is_an_endpoint_in_pack(&vertex(2)), true);
+        assert_eq!(adm.is_v_in_pack(&vertex(2)), true);
     }
 
     #[test]
-    fn test_is_an_endpoint_in_pack_returns_true_if_v_is_a_key_in_pack() {
+    fn test_is_v_in_pack_returns_true_if_v_in_t2() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
-        adm.packing.insert(vertex(4), vec![2,3]);
+        adm.t2.insert(vertex(2));
 
-        assert_eq!(adm.is_an_endpoint_in_pack(&vertex(4)), true);
+        assert_eq!(adm.is_v_in_pack(&vertex(2)), true);
     }
 
     #[test]
-    fn test_is_an_endpoint_in_pack_returns_false_if_v_in_t1_and_in_r() {
+    fn test_is_v_in_pack_returns_true_if_v_in_t3() {
+        let mut adm = AdmData::new(vertex(1), VertexSet::default());
+        adm.t3.insert(vertex(2));
+
+        assert_eq!(adm.is_v_in_pack(&vertex(2)), true);
+    }
+
+    #[test]
+    fn test_is_v_in_pack_returns_false_if_v_is_not_in_t() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
         adm.t1.insert(vertex(2));
-        adm.n_in_r.insert(vertex(2));
+        adm.t2.insert(vertex(3));
+        adm.t3.insert(vertex(4));
 
-        assert_eq!(adm.is_an_endpoint_in_pack(&vertex(2)), false);
+        assert_eq!(adm.is_v_in_pack(&vertex(5)), false);
     }
+
 
     #[test]
     fn remove_v_from_packing_removes_t1_vertex() {
