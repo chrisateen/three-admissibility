@@ -302,7 +302,25 @@ mod test_adm_graph {
     }
 
     #[test]
-    fn test_get_next_v_returns_none_if_no_candidates() {
+    fn get_next_v_returns_v_in_candidates() {
+        let edges: EdgeSet = [(1, 2), (1, 3), (1, 4), (2, 3), (3, 4)]
+            .iter()
+            .cloned()
+            .collect();
+        let graph = EditGraph::new();
+        let graph = create_test_graph(edges);
+        let mut adm_graph = AdmGraph::new(&graph, 2);
+        adm_graph.initialise_candidates();
+
+        let next = adm_graph.get_next_v_in_ordering().unwrap();
+
+        assert_eq!(adm_graph.r.contains(&next), true);
+        assert_eq!(adm_graph.candidates.contains(&next), false);
+        assert_eq!(adm_graph.l.contains(&next), false);
+    }
+
+    #[test]
+    fn get_next_v_returns_none_if_no_candidates() {
         let edges: EdgeSet = [(1, 2), (1, 3), (1, 4), (2, 3), (3, 4)]
             .iter()
             .cloned()
