@@ -160,3 +160,60 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use graphbench::editgraph::EditGraph;
+    use graphbench::graph::{EdgeSet, MutableGraph};
+
+    fn create_test_graph(edges: EdgeSet) -> EditGraph {
+        let mut graph = EditGraph::new();
+        for (u, v) in edges.iter() {
+            graph.add_edge(u, v);
+        }
+
+        graph
+    }
+
+    #[test]
+    pub fn test_admissibility_returns_correct_p_value() {
+        let edges: EdgeSet = [
+            (1, 8),
+            (1, 9),
+            (1, 11),
+            (2, 3),
+            (2, 5),
+            (2, 6),
+            (3, 4),
+            (3, 5),
+            (3, 6),
+            (3, 7),
+            (3, 11),
+            (4, 9),
+            (4, 10),
+            (5, 8),
+            (5, 10),
+            (5, 11),
+            (6, 7),
+            (7, 9),
+            (9, 11),
+            (10, 11),
+        ]
+            .iter()
+            .cloned()
+            .collect();
+        let graph = create_test_graph(edges);
+
+        let mut p = 1;
+        loop {
+            let is_p = compute_ordering(p, &graph, false);
+            if is_p.is_some() {
+                break;
+            }
+            p += 1;
+        }
+
+        assert_eq!(p, 3);
+    }
+}

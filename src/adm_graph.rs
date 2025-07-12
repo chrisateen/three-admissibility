@@ -50,9 +50,8 @@ impl<'a> AdmGraph<'a> {
     */
     fn compute_vias(&mut self, v: &mut AdmData){
         v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
-        let v_n_in_r = v.n_in_r.clone();
 
-        for u in v_n_in_r {
+        for u in  v.n_in_r.clone() {
             let u_adm_data = self.adm_data.get(&u).unwrap();
 
             for w in u_adm_data.t1.difference(&self.l) {
@@ -64,7 +63,7 @@ impl<'a> AdmGraph<'a> {
 
             for w in v.t1.difference(&self.l) {
                 // note that as v is moving to R
-                // w is in t2 of u with v as a via
+                // from u we can get to w via v
                 self.vias.add_a_via(u, *w, v.id);
             }
         }
@@ -116,6 +115,7 @@ impl<'a> AdmGraph<'a> {
 
         //check if we can add a path of length 2
         for x in w_adm_data.t1.intersection(&self.l){
+            if *x == u.id { continue;}
             if !u.is_v_in_pack(x){
                 u.add_t2_to_packing(x, &w);
                 return;
@@ -129,13 +129,14 @@ impl<'a> AdmGraph<'a> {
             }
             let x_adm_data = self.adm_data.get(&x).unwrap();
             for y in x_adm_data.t1.intersection(&self.l){
+                if *y == u.id { continue;}
                 if !u.is_v_in_pack(&y){
                     //Check if there is a shorter path to y (i.e u,x,y)
                     // if so add the shorter path instead
                     if self.graph.adjacent(&u.id, x) {
                         u.add_t2_to_packing(&y,x);
                     }else {
-                        u.add_t3_to_packing(&y, x, &w);
+                        u.add_t3_to_packing(&y, &w, x);
                     }
                     return;
                 }
@@ -154,7 +155,9 @@ impl<'a> AdmGraph<'a> {
             if u.is_v_in_pack(&w){continue;}
 
             for y in &t3_and_t2{
-                if u.is_v_in_pack(&y){continue;}
+                if *y == u.id { continue;}
+                if u.is_v_in_pack(&y) {continue;}
+
                 let w_adm_data = self.adm_data.get(&w).unwrap();
 
                 //first check if w,y is a path
@@ -163,12 +166,14 @@ impl<'a> AdmGraph<'a> {
                     return;
                 }
 
+                //if w,y is not a path check vias between w and y
                 let x_vias = self.vias.get_vias(w, *y);
                 if x_vias == None { continue; }
 
                 for x in x_vias.unwrap(){
                     if u.is_v_in_pack(x){ continue;}
 
+                    //first check if there is a shorter path x,y
                     if self.graph.adjacent(&u.id, x) {
                         u.add_t2_to_packing(y,x);
                     }else {
@@ -219,10 +224,16 @@ impl<'a> AdmGraph<'a> {
         }
     }
 
+    /*
+        Checks if all the vertices are in r or can be added to r
+     */
     pub fn is_all_vertices_in_r_or_candidates(&self) -> bool {
         self.r.len() + self.candidates.len() == self.num_of_vertices
     }
 
+    /*
+        Gets next vertex in the ordering
+     */
     pub fn get_next_v_in_ordering(&mut self) -> Option<Vertex>{
         let v = self.candidates.iter().next();;
 
@@ -237,5 +248,94 @@ impl<'a> AdmGraph<'a> {
             None => None
         }
 
+    }
+}
+
+#[cfg(test)]
+mod test_adm_graph {
+    use super::*;
+    use graphbench::editgraph::EditGraph;
+    use graphbench::graph::{EdgeSet, MutableGraph};
+
+    fn create_test_graph(edges: EdgeSet) -> EditGraph {
+        let mut graph = EditGraph::new();
+        for (u, v) in edges.iter() {
+            graph.add_edge(u, v);
+        }
+
+        graph
+    }
+
+    #[test]
+    fn initialise_candidates_should_add_vertices_with_degree_p_or_less_to_candidates() {
+        let edges: EdgeSet = [(1, 2), (1, 3), (1, 4), (2, 5), (2, 6), (3, 7)]
+            .iter()
+            .cloned()
+            .collect();
+        let graph = create_test_graph(edges);
+        let mut adm_graph = AdmGraph::new(&graph, 2);
+
+        adm_graph.initialise_candidates();
+
+        assert_eq!(
+            adm_graph.candidates,
+            [3, 4, 5, 6, 7].iter().cloned().collect()
+        );
+    }
+
+    #[test]
+    fn is_all_vertices_in_r_or_candidates_returns_true_if_all_vertices_are_in_r_or_candidates() {
+        let graph = EditGraph::new();
+        let mut adm_graph = AdmGraph::new(&graph, 1);
+        adm_graph.r = vec![1,2,3].into_iter().collect();
+        adm_graph.candidates = vec![4,5].into_iter().collect();
+        adm_graph.num_of_vertices = 5;
+
+        assert_eq!(adm_graph.is_all_vertices_in_r_or_candidates(), true);
+    }
+
+    #[test]
+    fn is_all_vertices_in_r_or_candidates_returns_false_if_some_vertices_are_not_in_r_or_candidates() {
+        let graph = EditGraph::new();
+        let mut adm_graph = AdmGraph::new(&graph, 1);
+        adm_graph.r = vec![1,2,3].into_iter().collect();
+        adm_graph.candidates = vec![4,5].into_iter().collect();
+        adm_graph.num_of_vertices = 10;
+
+        assert_eq!(adm_graph.is_all_vertices_in_r_or_candidates(), false);
+    }
+
+    #[test]
+    fn get_next_v_returns_v_in_candidates() {
+        let edges: EdgeSet = [(1, 2), (1, 3), (1, 4), (2, 3), (3, 4)]
+            .iter()
+            .cloned()
+            .collect();
+        let graph = EditGraph::new();
+        let graph = create_test_graph(edges);
+        let mut adm_graph = AdmGraph::new(&graph, 2);
+        adm_graph.initialise_candidates();
+
+        let next = adm_graph.get_next_v_in_ordering().unwrap();
+
+        assert_eq!(adm_graph.r.contains(&next), true);
+        assert_eq!(adm_graph.candidates.contains(&next), false);
+        assert_eq!(adm_graph.l.contains(&next), false);
+    }
+
+    #[test]
+    fn get_next_v_returns_none_if_no_candidates() {
+        let edges: EdgeSet = [(1, 2), (1, 3), (1, 4), (2, 3), (3, 4)]
+            .iter()
+            .cloned()
+            .collect(); //Each vertex has degree > 1
+        let graph = EditGraph::new();
+        let graph = create_test_graph(edges);
+        let mut adm_graph = AdmGraph::new(&graph, 1);
+        adm_graph.initialise_candidates();
+
+        let next = adm_graph.get_next_v_in_ordering();
+
+        assert_eq!(next, None);
     }
 }
