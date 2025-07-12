@@ -1,15 +1,14 @@
-use std::cmp::max;
+use crate::adm_graph::AdmGraph;
+use crate::utils::{load_graph, save_ordering_to_file};
 use clap::{Parser, Subcommand};
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, MutableGraph, Vertex};
-use graphbench::io::LoadFromFile;
 use peak_alloc::PeakAlloc;
-use crate::adm_graph::AdmGraph;
-use crate::utils::{load_graph, save_ordering_to_file};
+use std::cmp::max;
 
-mod utils;
 mod adm_data;
 mod adm_graph;
+mod utils;
 mod vias;
 
 #[global_allocator]
@@ -41,7 +40,7 @@ enum Commands {
     /// Whether to save ordering to file
     Save {
         /// The path to save ordering to
-        #[arg(default_value= "results")]
+        #[arg(default_value = "results")]
         path: String,
     },
 }
@@ -84,11 +83,11 @@ fn next_p_value(p: i32, is_p: bool, lowest_p: i32, highest_not_p: i32) -> i32 {
     }
     //Continue to double the p value we check if we haven't found a value where G is p,2 admissible
     if lowest_p == -1 && !is_p {
-        return (p * 2) as i32;
+        return p * 2;
     }
     //Once we found a p value keep halving the search between the lowest p and the highest not p
     let x = max(p, lowest_p);
-    return (x + highest_not_p) / 2;
+    (x + highest_not_p) / 2
 }
 
 fn main() {
@@ -100,22 +99,19 @@ fn main() {
 
     let track_memory = args.track_memory;
 
-    let save_path = match args.command {
-        None => None,
-        Some(Commands::Save { path }) => Some(path)
-    };
+    let save_path = args.command.map(|Commands::Save { path }| path);
 
     let mut lowest_p: i32 = -1;
     let mut highest_not_p: i32 = -1;
     let mut best_order = None;
 
-    let mut peak_mem : f32;
+    let mut peak_mem: f32;
 
     let mut graph = load_graph(network_path, &network);
 
     graph.remove_loops();
 
-    if track_memory{
+    if track_memory {
         peak_mem = PEAK_ALLOC.peak_usage_as_kb();
         println!("Max memory used after graph loading in kb is {}", peak_mem);
     }
@@ -200,9 +196,9 @@ mod test {
             (9, 11),
             (10, 11),
         ]
-            .iter()
-            .cloned()
-            .collect();
+        .iter()
+        .cloned()
+        .collect();
         let graph = create_test_graph(edges);
 
         let mut p = 1;

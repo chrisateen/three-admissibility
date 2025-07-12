@@ -1,7 +1,7 @@
-use graphbench::editgraph::EditGraph;
-use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 use crate::adm_data::AdmData;
 use crate::vias::Vias;
+use graphbench::editgraph::EditGraph;
+use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 
 pub(crate) struct AdmGraph<'a> {
     l: VertexSet,
@@ -11,7 +11,7 @@ pub(crate) struct AdmGraph<'a> {
     num_of_vertices: usize,
     p: usize,
     graph: &'a EditGraph,
-    vias: Vias
+    vias: Vias,
 }
 
 impl<'a> AdmGraph<'a> {
@@ -48,15 +48,15 @@ impl<'a> AdmGraph<'a> {
     /*
     Computes vias and a maximal 2-packing for a vertex being moved to R
     */
-    fn compute_vias(&mut self, v: &mut AdmData){
+    fn compute_vias(&mut self, v: &mut AdmData) {
         v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
 
-        for u in  v.n_in_r.clone() {
+        for u in v.n_in_r.clone() {
             let u_adm_data = self.adm_data.get(&u).unwrap();
 
             for w in u_adm_data.t1.difference(&self.l) {
-                if !v.is_v_in_pack(&w){
-                    v.add_t2_to_packing(&w, &u);
+                if !v.is_v_in_pack(w) {
+                    v.add_t2_to_packing(w, &u);
                 }
                 self.vias.add_a_via(v.id, *w, u);
             }
@@ -72,26 +72,30 @@ impl<'a> AdmGraph<'a> {
     /*
         Fetches all the vertices in L that is in T1, T2 and T3 of v
     */
-    fn collect_targets(&self, v: &AdmData) -> VertexSet{
+    fn collect_targets(&self, v: &AdmData) -> VertexSet {
         let mut t: VertexSet = v.t1.intersection(&self.l).cloned().collect();
-        let t1_t2: VertexSet  = v.t1.union(&v.t2).cloned().collect();
+        let t1_t2: VertexSet = v.t1.union(&v.t2).cloned().collect();
 
         for u in t1_t2.intersection(&self.r) {
-            if *u == v.id { continue;}
-            let u_adm_data = self.adm_data.get(&u).unwrap();
+            if *u == v.id {
+                continue;
+            }
+            let u_adm_data = self.adm_data.get(u).unwrap();
 
             for w in u_adm_data.t1.intersection(&self.l) {
                 t.insert(*w);
             }
 
-            if !self.graph.adjacent(&u, &v.id){
+            if !self.graph.adjacent(u, &v.id) {
                 continue;
             };
 
             //if u in N(v) then we need to use 2-packing of u to get vertices t3 of v
             for w in u_adm_data.t1.intersection(&self.r) {
-                if *w == v.id { continue;}
-                let w_adm_data = self.adm_data.get(&w).unwrap();
+                if *w == v.id {
+                    continue;
+                }
+                let w_adm_data = self.adm_data.get(w).unwrap();
 
                 for x in w_adm_data.t1.intersection(&self.l) {
                     t.insert(*x);
@@ -104,39 +108,43 @@ impl<'a> AdmGraph<'a> {
     /*
         Simple update of a packing
     */
-    fn simple_update(&mut self, u: &mut AdmData, v: Vertex){
-        if !u.is_v_in_pack(&v){
+    fn simple_update(&mut self, u: &mut AdmData, v: Vertex) {
+        if !u.is_v_in_pack(&v) {
             return;
         }
 
         let path: Vec<Vertex> = u.remove_v_from_packing(&v);
-        let w = if path.len() > 0 { path[0] } else { v };
+        let w = if !path.is_empty() { path[0] } else { v };
         let w_adm_data = self.adm_data.get(&w).unwrap();
 
         //check if we can add a path of length 2
-        for x in w_adm_data.t1.intersection(&self.l){
-            if *x == u.id { continue;}
-            if !u.is_v_in_pack(x){
+        for x in w_adm_data.t1.intersection(&self.l) {
+            if *x == u.id {
+                continue;
+            }
+            if !u.is_v_in_pack(x) {
                 u.add_t2_to_packing(x, &w);
                 return;
             }
         }
 
         //check if we can add a path of length 3
-        for x in w_adm_data.t1.intersection(&self.r){
+        for x in w_adm_data.t1.intersection(&self.r) {
             if u.t2.contains(x) | u.t3.contains(x) | (u.id == v) {
                 continue;
             }
-            let x_adm_data = self.adm_data.get(&x).unwrap();
-            for y in x_adm_data.t1.intersection(&self.l){
-                if *y == u.id { continue;}
-                if !u.is_v_in_pack(&y){
+            let x_adm_data = self.adm_data.get(x).unwrap();
+            for y in x_adm_data.t1.intersection(&self.l) {
+                if *y == u.id {
+                    continue;
+                }
+                if !u.is_v_in_pack(y) {
                     //Check if there is a shorter path to y (i.e u,x,y)
                     // if so add the shorter path instead
                     if self.graph.adjacent(&u.id, x) {
-                        u.add_t2_to_packing(&y,x);
-                    }else {
-                        u.add_t3_to_packing(&y, &w, x);
+                        u.add_t2_to_packing(y, x);
+                    } else {
+                        u.add_t3_to_packing(y, &w, x);
                     }
                     return;
                 }
@@ -145,39 +153,49 @@ impl<'a> AdmGraph<'a> {
     }
 
     /*
-        Try to see if a disjoint path can be added to the packing of u
-     */
-    fn stage_1_update(&mut self, u: &mut AdmData){
-        let t1 : VertexSet = u.t1.intersection(&self.l).cloned().collect();
-        let t3_and_t2 : VertexSet = self.collect_targets(u).difference(&t1).cloned().collect();
+       Try to see if a disjoint path can be added to the packing of u
+    */
+    fn stage_1_update(&mut self, u: &mut AdmData) {
+        let t1: VertexSet = u.t1.intersection(&self.l).cloned().collect();
+        let t3_and_t2: VertexSet = self.collect_targets(u).difference(&t1).cloned().collect();
 
-        for w in u.n_in_r.clone(){
-            if u.is_v_in_pack(&w){continue;}
+        for w in u.n_in_r.clone() {
+            if u.is_v_in_pack(&w) {
+                continue;
+            }
 
-            for y in &t3_and_t2{
-                if *y == u.id { continue;}
-                if u.is_v_in_pack(&y) {continue;}
+            for y in &t3_and_t2 {
+                if *y == u.id {
+                    continue;
+                }
+                if u.is_v_in_pack(y) {
+                    continue;
+                }
 
                 let w_adm_data = self.adm_data.get(&w).unwrap();
 
                 //first check if w,y is a path
-                if w_adm_data.t1.contains(y){
+                if w_adm_data.t1.contains(y) {
                     u.add_t2_to_packing(y, &w);
                     return;
                 }
 
                 //if w,y is not a path check vias between w and y
                 let x_vias = self.vias.get_vias(w, *y);
-                if x_vias == None { continue; }
+                if x_vias.is_none() {
+                    continue;
+                }
 
-                for x in x_vias.unwrap(){
-                    if u.is_v_in_pack(x){ continue;}
+                for x in x_vias.unwrap() {
+                    if u.is_v_in_pack(x) {
+                        continue;
+                    }
 
                     //first check if there is a shorter path x,y
                     if self.graph.adjacent(&u.id, x) {
-                        u.add_t2_to_packing(y,x);
-                    }else {
-                        u.add_t3_to_packing(y,x, &w);
+                        u.add_t2_to_packing(y, x);
+                    } else {
+                        u.add_t3_to_packing(y, x, &w);
                     }
                 }
             }
@@ -185,39 +203,38 @@ impl<'a> AdmGraph<'a> {
     }
 
     /*
-        Find an augmenting path to see if packing of u can be extended
-     */
-    fn stage_2_update(&mut self, u: &mut AdmData){}
-
+       Find an augmenting path to see if packing of u can be extended
+    */
+    fn stage_2_update(&mut self, u: &mut AdmData) {}
 
     /*
         Update data structures now that vertx v is moving to R
     */
-    fn update(&mut self, v:&Vertex){
-        let mut v_adm_data = self.adm_data.remove(&v).unwrap();
+    fn update(&mut self, v: &Vertex) {
+        let mut v_adm_data = self.adm_data.remove(v).unwrap();
         let t = self.collect_targets(&v_adm_data);
         self.compute_vias(&mut v_adm_data);
         self.adm_data.insert(*v, v_adm_data);
 
-        for u in t{
-            if self.candidates.contains(&u){
+        for u in t {
+            if self.candidates.contains(&u) {
                 continue;
             }
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
 
             //check if a disjoint path can be added to packing of u
-            if u_adm_data.size_of_packing() <= self.p{
+            if u_adm_data.size_of_packing() <= self.p {
                 self.stage_1_update(&mut u_adm_data);
             }
             //If size of packing is still p after simple update
             //then do augmenting path to see if packing of u can be extended
-            if u_adm_data.size_of_packing() <= self.p{
+            if u_adm_data.size_of_packing() <= self.p {
                 self.stage_2_update(&mut u_adm_data);
             }
 
             //If size of packing is still p then add to candidates
-            if u_adm_data.size_of_packing() <= self.p{
+            if u_adm_data.size_of_packing() <= self.p {
                 self.candidates.insert(u);
             }
             self.adm_data.insert(u, u_adm_data);
@@ -225,17 +242,17 @@ impl<'a> AdmGraph<'a> {
     }
 
     /*
-        Checks if all the vertices are in r or can be added to r
-     */
+       Checks if all the vertices are in r or can be added to r
+    */
     pub fn is_all_vertices_in_r_or_candidates(&self) -> bool {
         self.r.len() + self.candidates.len() == self.num_of_vertices
     }
 
     /*
-        Gets next vertex in the ordering
-     */
-    pub fn get_next_v_in_ordering(&mut self) -> Option<Vertex>{
-        let v = self.candidates.iter().next();;
+       Gets next vertex in the ordering
+    */
+    pub fn get_next_v_in_ordering(&mut self) -> Option<Vertex> {
+        let v = self.candidates.iter().next();
 
         match v {
             Some(&v) => {
@@ -245,9 +262,8 @@ impl<'a> AdmGraph<'a> {
                 self.update(&v);
                 Some(v)
             }
-            None => None
+            None => None,
         }
-
     }
 }
 
@@ -287,22 +303,23 @@ mod test_adm_graph {
     fn is_all_vertices_in_r_or_candidates_returns_true_if_all_vertices_are_in_r_or_candidates() {
         let graph = EditGraph::new();
         let mut adm_graph = AdmGraph::new(&graph, 1);
-        adm_graph.r = vec![1,2,3].into_iter().collect();
-        adm_graph.candidates = vec![4,5].into_iter().collect();
+        adm_graph.r = vec![1, 2, 3].into_iter().collect();
+        adm_graph.candidates = vec![4, 5].into_iter().collect();
         adm_graph.num_of_vertices = 5;
 
-        assert_eq!(adm_graph.is_all_vertices_in_r_or_candidates(), true);
+        assert!(adm_graph.is_all_vertices_in_r_or_candidates());
     }
 
     #[test]
-    fn is_all_vertices_in_r_or_candidates_returns_false_if_some_vertices_are_not_in_r_or_candidates() {
+    fn is_all_vertices_in_r_or_candidates_returns_false_if_some_vertices_are_not_in_r_or_candidates()
+     {
         let graph = EditGraph::new();
         let mut adm_graph = AdmGraph::new(&graph, 1);
-        adm_graph.r = vec![1,2,3].into_iter().collect();
-        adm_graph.candidates = vec![4,5].into_iter().collect();
+        adm_graph.r = vec![1, 2, 3].into_iter().collect();
+        adm_graph.candidates = vec![4, 5].into_iter().collect();
         adm_graph.num_of_vertices = 10;
 
-        assert_eq!(adm_graph.is_all_vertices_in_r_or_candidates(), false);
+        assert!(!adm_graph.is_all_vertices_in_r_or_candidates());
     }
 
     #[test]
@@ -311,16 +328,15 @@ mod test_adm_graph {
             .iter()
             .cloned()
             .collect();
-        let graph = EditGraph::new();
         let graph = create_test_graph(edges);
         let mut adm_graph = AdmGraph::new(&graph, 2);
         adm_graph.initialise_candidates();
 
         let next = adm_graph.get_next_v_in_ordering().unwrap();
 
-        assert_eq!(adm_graph.r.contains(&next), true);
-        assert_eq!(adm_graph.candidates.contains(&next), false);
-        assert_eq!(adm_graph.l.contains(&next), false);
+        assert!(adm_graph.r.contains(&next));
+        assert!(!adm_graph.candidates.contains(&next));
+        assert!(!adm_graph.l.contains(&next));
     }
 
     #[test]
@@ -329,7 +345,6 @@ mod test_adm_graph {
             .iter()
             .cloned()
             .collect(); //Each vertex has degree > 1
-        let graph = EditGraph::new();
         let graph = create_test_graph(edges);
         let mut adm_graph = AdmGraph::new(&graph, 1);
         adm_graph.initialise_candidates();
