@@ -4,12 +4,13 @@ use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, MutableGraph, Vertex};
 use graphbench::io::LoadFromFile;
 use peak_alloc::PeakAlloc;
-use crate::admGraph::AdmGraph;
+use crate::adm_graph::AdmGraph;
 use crate::utils::{load_graph, save_ordering_to_file};
 
 mod utils;
-mod admData;
-mod admGraph;
+mod adm_data;
+mod adm_graph;
+mod vias;
 
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;
