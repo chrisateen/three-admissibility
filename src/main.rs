@@ -10,6 +10,7 @@ use crate::utils::{load_graph, save_ordering_to_file};
 mod utils;
 mod admData;
 mod admGraph;
+mod vias;
 
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;
