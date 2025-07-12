@@ -115,6 +115,7 @@ impl<'a> AdmGraph<'a> {
 
         //check if we can add a path of length 2
         for x in w_adm_data.t1.intersection(&self.l){
+            if *x == u.id { continue;}
             if !u.is_v_in_pack(x){
                 u.add_t2_to_packing(x, &w);
                 return;
@@ -128,13 +129,14 @@ impl<'a> AdmGraph<'a> {
             }
             let x_adm_data = self.adm_data.get(&x).unwrap();
             for y in x_adm_data.t1.intersection(&self.l){
+                if *y == u.id { continue;}
                 if !u.is_v_in_pack(&y){
                     //Check if there is a shorter path to y (i.e u,x,y)
                     // if so add the shorter path instead
                     if self.graph.adjacent(&u.id, x) {
                         u.add_t2_to_packing(&y,x);
                     }else {
-                        u.add_t3_to_packing(&y, x, &w);
+                        u.add_t3_to_packing(&y, &w, x);
                     }
                     return;
                 }
@@ -153,7 +155,9 @@ impl<'a> AdmGraph<'a> {
             if u.is_v_in_pack(&w){continue;}
 
             for y in &t3_and_t2{
-                if u.is_v_in_pack(&y){continue;}
+                if *y == u.id { continue;}
+                if u.is_v_in_pack(&y) {continue;}
+
                 let w_adm_data = self.adm_data.get(&w).unwrap();
 
                 //first check if w,y is a path
