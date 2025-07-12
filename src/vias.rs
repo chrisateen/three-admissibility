@@ -14,6 +14,10 @@ impl Vias {
         }
     }
 
+    /*
+        Adds a via for v that is moving to R vias[t2_v][v] += {via}
+        Only stores a maximum of 2p+ 1 vias
+    */
     pub fn add_a_via(&mut self, v:  Vertex, t2_v: Vertex, via: Vertex) -> bool {
         let v_entries = self.vias.entry(v).or_insert(VertexMap::default());
         let t2_v_entries = v_entries.entry(t2_v).or_insert(VertexSet::default());
@@ -36,6 +40,10 @@ impl Vias {
 
     }
 
+    /*
+        Gets all vias between v in R and a vertex in t2_l of v
+        If there isn't any return none
+    */
     pub fn get_vias(&self, v:  Vertex, t2_v: Vertex) -> Option<&VertexSet> {
         let v_entries = self.vias.get(&v);
         match v_entries {
