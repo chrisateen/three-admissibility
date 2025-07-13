@@ -2,6 +2,7 @@ use crate::adm_data::AdmData;
 use crate::vias::Vias;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
+use crate::augmenting_path::AugmentingPath;
 
 pub(crate) struct AdmGraph<'a> {
     l: VertexSet,
@@ -155,9 +156,9 @@ impl<'a> AdmGraph<'a> {
     /*
        Try to see if a disjoint path can be added to the packing of u
     */
-    fn stage_1_update(&mut self, u: &mut AdmData) {
+    fn stage_1_update(&mut self, u: &mut AdmData, targets: &VertexSet) {
         let t1: VertexSet = u.t1.intersection(&self.l).cloned().collect();
-        let t3_and_t2: VertexSet = self.collect_targets(u).difference(&t1).cloned().collect();
+        let t3_and_t2: VertexSet = targets.difference(&t1).cloned().collect();
 
         for w in u.n_in_r.clone() {
             if u.is_v_in_pack(&w) {
@@ -205,7 +206,16 @@ impl<'a> AdmGraph<'a> {
     /*
        Find an augmenting path to see if packing of u can be extended
     */
-    fn stage_2_update(&mut self, u: &mut AdmData) {}
+    fn stage_2_update(&mut self, u: &mut AdmData, targets: &VertexSet) {
+        let t1: VertexSet = u.t1.intersection(&self.l).cloned().collect();
+        let t2_t3: VertexSet = targets.difference(&t1).cloned().collect();
+
+        let mut aug_u = AugmentingPath::new(u.id);
+        aug_u.add_pack_edges(&u.packing);
+
+        //add edges between
+        aug_u.add_edges_between(&t2_t3, self.graph);
+    }
 
     /*
         Update data structures now that vertx v is moving to R
@@ -223,14 +233,18 @@ impl<'a> AdmGraph<'a> {
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
 
+            let targets_u : VertexSet;
+
             //check if a disjoint path can be added to packing of u
             if u_adm_data.size_of_packing() <= self.p {
-                self.stage_1_update(&mut u_adm_data);
-            }
-            //If size of packing is still p after simple update
-            //then do augmenting path to see if packing of u can be extended
-            if u_adm_data.size_of_packing() <= self.p {
-                self.stage_2_update(&mut u_adm_data);
+                targets_u = self.collect_targets(&u_adm_data);
+                self.stage_1_update(&mut u_adm_data, &targets_u);
+
+                //If size of packing is still p after simple update
+                //then do augmenting path to see if packing of u can be extended
+                if u_adm_data.size_of_packing() <= self.p {
+                    self.stage_2_update(&mut u_adm_data, &targets_u);
+                }
             }
 
             //If size of packing is still p then add to candidates
