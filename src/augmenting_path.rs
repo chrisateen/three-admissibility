@@ -13,9 +13,11 @@ impl AugmentingPath {
         }
     }
 
+    /*
+        Add edges from pack of self.id
+        pack edges added in a direction that points away from self.id/root
+    */
     pub fn add_pack_edges(&mut self, packing: VertexMap<Vec<Vertex>>) {
-        //pack edges added in a direction that points away from root
-
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
         for w in packing.keys() {
