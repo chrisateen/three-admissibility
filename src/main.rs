@@ -10,6 +10,7 @@ mod adm_data;
 mod adm_graph;
 mod utils;
 mod vias;
+mod augmenting_path;
 
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;
@@ -158,7 +159,7 @@ fn main() {
 }
 
 #[cfg(test)]
-mod test {
+mod test_main {
     use super::*;
     use graphbench::editgraph::EditGraph;
     use graphbench::graph::{EdgeSet, MutableGraph};
