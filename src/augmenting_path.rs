@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 use crate::vias::Vias;
@@ -7,6 +8,7 @@ pub struct AugmentingPath {
     pub edges: VertexMap<VertexSet>,
     pub s1: VertexSet,
     pub s2: VertexSet,
+    pub t: VertexSet,
 }
 
 impl AugmentingPath {
@@ -16,17 +18,19 @@ impl AugmentingPath {
             edges: VertexMap::default(),
             s1: VertexSet::default(),
             s2: VertexSet::default(),
+            t: VertexSet::default(),
         }
     }
 
     /*
         Add edges from pack of self.id
-        pack edges added in a direction that points away from self.id/root
+        edges added in a direction that points away from root
     */
     pub fn add_pack_edges(&mut self, packing: &VertexMap<Vec<Vertex>>) {
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
         for w in packing.keys() {
+            self.t.insert(*w);
             let edge = packing.get(w).unwrap();
             if edge.is_empty() || edge.len() > 2 {
                 panic!("Invalid edge length of {} in pack of {}", edge.len(), self.id);
@@ -55,56 +59,106 @@ impl AugmentingPath {
     }
 
     /*
-        Add all edges between vertices in packing and the targets
+        Add all edges between vertices in packing
+        edges added in a direction that points away from root
     */
-    pub fn add_edges_between(&mut self, t2_t3: &VertexSet, graph: &EditGraph) {
+    pub fn add_edges_between(&mut self, graph: &EditGraph) {
+        let s2_union_t: VertexSet = self.s2.union(&self.t).cloned().collect();
         for v in &self.s1 {
-            for w in self.s2.union(t2_t3) {
+            for w in &s2_union_t {
                 if graph.adjacent(v,w){
-                    //edges are added as s2 -> s1 or target -> s1
-                    let w_neighbours = self.edges.entry(*w).or_default();
-                    w_neighbours.insert(*v);
+                    //edges are added as s1 -> s2 or s1 -> t
+                    let v_neighbours = self.edges.entry(*v).or_default();
+                    v_neighbours.insert(*w);
                 }
             }
         }
 
         for v in &self.s2 {
-            for w in t2_t3 {
+            for w in &self.t {
                 if graph.adjacent(v,w){
-                    let w_neighbours = self.edges.entry(*w).or_default();
-                    w_neighbours.insert(*v);
+                    //edges are added as s2 -> t
+                    let v_neighbours = self.edges.entry(*v).or_default();
+                    v_neighbours.insert(*w);
                 }
             }
         }
     }
 
     /*
-        Add outside edges using vias
+        Add all edges between N_R(v) that are not in the packing
+         and vertices in pack that are in s2 and t
+         Also add vertices between N_R(v) and t through a via
     */
-    pub fn add_outside_edges(&mut self, t2_t3: &VertexSet, graph: &EditGraph, vias: &Vias) {
-        let mut z1 = VertexSet::default();
-        let mut z2 = VertexSet::default();
+    pub fn add_edges_containing_n_of_r(&mut self, n_in_r: VertexSet,  graph: &EditGraph, vias: &Vias) {
+        let s2_union_t: VertexSet = self.s2.union(&self.t).cloned().collect();
+        let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
+        let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
-        for x in self.s2.union(t2_t3){
-            let x_u_vias = vias.get_vias(*x, self.id);
-            if x_u_vias.is_none(){
-                continue;
+        for v in n_in_r.difference(&self.s1) {
+            let mut v_neighbours = self.edges.remove(v).unwrap_or_default();
+
+            //Check if N_R(v) is connected directly to a vertex in s2_union_t
+            for w in &s2_union_t {
+                if graph.adjacent(v, w){
+                    //edges are added as N_R(v) -> s2 or N_R(v) -> t
+                    v_neighbours.insert(*w);
+                    //add edge from root -> N_R(v) as well
+                    root_neighbours.insert(*v);
+                }
+
+                //Check if we can add a via between N_R(v) and a target
+                if self.t.contains(w){
+                    let vias_v_w = vias.get_vias(*v,*w);
+                    if vias_v_w.is_some() {
+                        let eligible_via = vias_v_w.unwrap().difference(&s).next();
+                        if let Some(x) = eligible_via {
+                            let x_neighbours = self.edges.entry(*x).or_default();
+                            //edges are added as N_R(v) -> via
+                            //then via -> t
+                            v_neighbours.insert(*x);
+                            x_neighbours.insert(*w);
+                            //add edge from root -> N_R(v) as well
+                            root_neighbours.insert(*v);
+                        }
+                    }
+                }
             }
 
-            //TODO should we loop until we find the first eligible via
-            let mut eligible_vias = x_u_vias
-                .unwrap()
-                .iter()
-                .filter( |x| !self.s1.contains(x) && !self.s2.contains(x) && !z1.contains(x));
-            z1.insert(*eligible_vias.next().unwrap());
+            self.edges.insert(*v, v_neighbours);
         }
 
-        for y in t2_t3 {
-            //TODO do we loop over all N(u) cap R
-        }
-
-        //TODO do we need to add vertices between each R vertex
+        self.edges.insert(self.id, root_neighbours);
     }
+
+    /*
+        Add a via between each s1 and target
+        TODO: If t in t2 should we be adding this?
+    */
+    pub fn add_vias_from_s1(&mut self, vias: &Vias) {
+        let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
+
+        for v in &self.s1 {
+            let mut v_neighbours = self.edges.remove(v).unwrap_or_default();
+
+            for w in &self.t {
+                let vias_v_w = vias.get_vias(*v, *w);
+
+                if vias_v_w.is_some() {
+                    let eligible_via = vias_v_w.unwrap().difference(&s).next();
+                    if let Some(x) = eligible_via {
+                        let x_neighbours = self.edges.entry(*x).or_default();
+                        //edges are added as s1 -> via
+                        v_neighbours.insert(*x);
+                        //then via -> t
+                        x_neighbours.insert(*w);
+                    }
+                }
+            }
+            self.edges.insert(*v, v_neighbours);
+        }
+    }
+
 }
 
 #[cfg(test)]

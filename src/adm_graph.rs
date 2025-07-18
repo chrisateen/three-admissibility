@@ -212,9 +212,7 @@ impl<'a> AdmGraph<'a> {
 
         let mut aug_u = AugmentingPath::new(u.id);
         aug_u.add_pack_edges(&u.packing);
-
-        //add edges between
-        aug_u.add_edges_between(&t2_t3, self.graph);
+        
     }
 
     /*
