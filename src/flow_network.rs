@@ -1,24 +1,26 @@
-use std::collections::HashSet;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
+use crate::adm_data::AdmData;
 use crate::vias::Vias;
 
-pub struct AugmentingPath {
+pub struct FlowNetwork {
     pub id: Vertex,
     pub edges: VertexMap<VertexSet>,
     pub s1: VertexSet,
     pub s2: VertexSet,
-    pub t: VertexSet,
+    pub t_in: VertexSet, // t in packing
+    pub t_out: VertexSet,
 }
 
-impl AugmentingPath {
+impl FlowNetwork {
     pub fn new(id: Vertex) -> Self {
-        AugmentingPath{
+        FlowNetwork {
             id,
             edges: VertexMap::default(),
             s1: VertexSet::default(),
             s2: VertexSet::default(),
-            t: VertexSet::default(),
+            t_in: VertexSet::default(),
+            t_out: VertexSet::default(),
         }
     }
 
@@ -30,7 +32,7 @@ impl AugmentingPath {
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
         for w in packing.keys() {
-            self.t.insert(*w);
+            self.t_in.insert(*w);
             let edge = packing.get(w).unwrap();
             if edge.is_empty() || edge.len() > 2 {
                 panic!("Invalid edge length of {} in pack of {}", edge.len(), self.id);
@@ -63,7 +65,7 @@ impl AugmentingPath {
         edges added in a direction that points away from root
     */
     pub fn add_edges_between(&mut self, graph: &EditGraph) {
-        let s2_union_t: VertexSet = self.s2.union(&self.t).cloned().collect();
+        let s2_union_t: VertexSet = self.s2.union(&self.t_in).cloned().collect();
         for v in &self.s1 {
             for w in &s2_union_t {
                 if graph.adjacent(v,w){
@@ -75,7 +77,7 @@ impl AugmentingPath {
         }
 
         for v in &self.s2 {
-            for w in &self.t {
+            for w in &self.t_in {
                 if graph.adjacent(v,w){
                     //edges are added as s2 -> t
                     let v_neighbours = self.edges.entry(*v).or_default();
@@ -91,7 +93,7 @@ impl AugmentingPath {
          Also add vertices between N_R(v) and t through a via
     */
     pub fn add_edges_containing_n_of_r(&mut self, n_in_r: VertexSet,  graph: &EditGraph, vias: &Vias) {
-        let s2_union_t: VertexSet = self.s2.union(&self.t).cloned().collect();
+        let s2_union_t: VertexSet = self.s2.union(&self.t_in).cloned().collect();
         let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
@@ -108,7 +110,7 @@ impl AugmentingPath {
                 }
 
                 //Check if we can add a via between N_R(v) and a target
-                if self.t.contains(w){
+                if self.t_in.contains(w){
                     let vias_v_w = vias.get_vias(*v,*w);
                     if vias_v_w.is_some() {
                         let eligible_via = vias_v_w.unwrap().difference(&s).next();
@@ -133,7 +135,6 @@ impl AugmentingPath {
 
     /*
         Add a via between each s1 and target
-        TODO: If t in t2 should we be adding this?
     */
     pub fn add_vias_from_s1(&mut self, vias: &Vias) {
         let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
@@ -141,7 +142,7 @@ impl AugmentingPath {
         for v in &self.s1 {
             let mut v_neighbours = self.edges.remove(v).unwrap_or_default();
 
-            for w in &self.t {
+            for w in &self.t_in {
                 let vias_v_w = vias.get_vias(*v, *w);
 
                 if vias_v_w.is_some() {
@@ -159,10 +160,12 @@ impl AugmentingPath {
         }
     }
 
+    pub fn add_extra_targets(&mut self, adm_data: &VertexMap<AdmData>, ) {}
+
 }
 
 #[cfg(test)]
-mod test_augmenting_path {
+mod test_flow_network {
     use super::*;
 
     fn vertex(v: usize) -> Vertex {
@@ -174,7 +177,7 @@ mod test_augmenting_path {
         let mut packing : VertexMap<Vec<Vertex>> = VertexMap::default();
         packing.insert(vertex(4), Vec::from([vertex(2), vertex(3)]));
         packing.insert(6, Vec::from([vertex(5)]));
-        let mut augmenting_path = AugmentingPath::new(1);
+        let mut augmenting_path = FlowNetwork::new(1);
 
         augmenting_path.add_pack_edges(&packing);
 

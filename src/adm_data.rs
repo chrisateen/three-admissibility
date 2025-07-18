@@ -6,9 +6,12 @@ pub struct AdmData {
     pub t1: VertexSet,
     pub t2: VertexSet,
     pub t3: VertexSet,
-    pub packing: VertexMap<Vec<Vertex>>,
+    pub packing: VertexMap<Vec<Vertex>>, //Use an enum instead
 }
 
+//TODO add functions that get t1_l, t1_r that takes in set L or R
+//the function should use retain to update t1_1, t1_r
+// what ever calls this fn should use an assert to make sure the set now contains vertices in L
 impl AdmData {
     pub fn new(v: Vertex, v_neighbours: VertexSet) -> Self {
         AdmData {

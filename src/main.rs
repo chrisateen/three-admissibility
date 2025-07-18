@@ -10,7 +10,7 @@ mod adm_data;
 mod adm_graph;
 mod utils;
 mod vias;
-mod augmenting_path;
+mod flow_network;
 
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;

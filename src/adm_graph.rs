@@ -2,7 +2,7 @@ use crate::adm_data::AdmData;
 use crate::vias::Vias;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
-use crate::augmenting_path::AugmentingPath;
+use crate::flow_network::FlowNetwork;
 
 pub(crate) struct AdmGraph<'a> {
     l: VertexSet,
@@ -210,9 +210,9 @@ impl<'a> AdmGraph<'a> {
         let t1: VertexSet = u.t1.intersection(&self.l).cloned().collect();
         let t2_t3: VertexSet = targets.difference(&t1).cloned().collect();
 
-        let mut aug_u = AugmentingPath::new(u.id);
+        let mut aug_u = FlowNetwork::new(u.id);
         aug_u.add_pack_edges(&u.packing);
-        
+
     }
 
     /*
