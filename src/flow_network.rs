@@ -135,7 +135,7 @@ impl FlowNetwork {
     }
 
     /*
-        Add a via between each s1 and target
+       Add a via between each s1 and target
     */
     pub fn add_vias_from_s1(&mut self, vias: &Vias) {
         let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
@@ -161,7 +161,47 @@ impl FlowNetwork {
         }
     }
 
-    pub fn add_extra_targets(&mut self, adm_data: &VertexMap<AdmData>, ) {}
+    /*
+        For each s1 and s2 add a target that is not already in the packing
+    */
+    pub fn add_extra_targets(&mut self, adm_data: &VertexMap<AdmData>, targets: &VertexSet, vias: &Vias, l: &VertexSet) {
+        let s1_s2 : VertexSet = self.s1.union(&self.s2).cloned().collect();
+
+        'outer: for v in &s1_s2 {
+            let v_adm_data = adm_data.get(v).unwrap();
+            for w in v_adm_data.t1.intersection(l) {
+                if !self.t_in.contains(w){
+                    //adds edge s2 -> target outside packing or s1 -> target outside packing
+                    self.edges.get_mut(v).unwrap().insert(*w);
+                    self.t_out.insert(*w);
+                    continue 'outer;
+                }
+            }
+
+            if self.s2.contains(v) {
+                continue 'outer;
+            }
+
+            for w in targets.difference(&self.t_in){
+                let v_w_vias = vias.get_vias(*v, *w);
+                if v_w_vias.is_none() {
+                    continue;
+                }
+                let eligible_via = v_w_vias.unwrap().difference(&s1_s2).next();
+                match eligible_via {
+                    None => {}
+                    Some(x) => {
+                        //adds edge s1 (v) -> via (x)
+                        self.edges.get_mut(v).unwrap().insert(*x);
+                        self.edges.entry(*x).or_default().insert(*w);
+                        self.t_out.insert(*w);
+                        continue 'outer;
+                    }
+                }
+            }
+        }
+
+    }
 
 }
 
