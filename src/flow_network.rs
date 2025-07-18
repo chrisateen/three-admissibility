@@ -1,6 +1,6 @@
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
-use crate::adm_data::AdmData;
+use crate::adm_data::{AdmData, Path};
 use crate::vias::Vias;
 
 pub struct FlowNetwork {
@@ -8,8 +8,8 @@ pub struct FlowNetwork {
     pub edges: VertexMap<VertexSet>,
     pub s1: VertexSet,
     pub s2: VertexSet,
-    pub t_in: VertexSet, // t in packing
-    pub t_out: VertexSet,
+    pub t_in: VertexSet, // targets in packing
+    pub t_out: VertexSet, //target not in packing
 }
 
 impl FlowNetwork {
@@ -28,33 +28,34 @@ impl FlowNetwork {
         Add edges from pack of self.id
         edges added in a direction that points away from root
     */
-    pub fn add_pack_edges(&mut self, packing: &VertexMap<Vec<Vertex>>) {
+    pub fn add_pack_edges(&mut self, packing: &VertexMap<Path>) {
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
         for w in packing.keys() {
             self.t_in.insert(*w);
-            let edge = packing.get(w).unwrap();
-            if edge.is_empty() || edge.len() > 2 {
-                panic!("Invalid edge length of {} in pack of {}", edge.len(), self.id);
+            let path = packing.get(w).unwrap();
+
+            match path {
+                Path::TwoPath(s1, t2) => {
+                    let s1_neighbours = self.edges.entry(*s1).or_default();
+                    root_neighbours.insert(*s1);
+                    self.s1.insert(*s1);
+                    s1_neighbours.insert(*t2);
+                },
+                Path::ThreePath(s1, s2 , t3) => {
+                    let mut s1_neighbours = self.edges.remove(s1).unwrap_or_default();
+                    let mut s2_neighbours = self.edges.remove(s2).unwrap_or_default();
+
+                    root_neighbours.insert(*s1);
+                    self.s1.insert(*s1);
+                    s1_neighbours.insert(*s2);
+                    self.s2.insert(*s2);
+                    s2_neighbours.insert(*t3);
+
+                    self.edges.insert(*s1, s1_neighbours);
+                    self.edges.insert(*s2, s2_neighbours);
+                },
             }
-            let t1 = edge.first().unwrap();
-            let t1_neighbours = self.edges.entry(*t1).or_default();
-            let t2 = edge.get(1);
-
-            root_neighbours.insert(*t1);
-            self.s1.insert(*t1);
-
-            match t2 {
-                Some(t2) => {
-                    t1_neighbours.insert(*t2);
-                    let t2_neighbours = self.edges.entry(*t2).or_default();
-                    t2_neighbours.insert(*w);
-                    self.s2.insert(*t2);
-                }
-                None => {
-                    t1_neighbours.insert(*w);
-                }
-            };
         }
 
         self.edges.insert(self.id, root_neighbours);
@@ -174,9 +175,9 @@ mod test_flow_network {
 
     #[test]
     fn add_pack_edges_add_edges_in_correct_order() {
-        let mut packing : VertexMap<Vec<Vertex>> = VertexMap::default();
-        packing.insert(vertex(4), Vec::from([vertex(2), vertex(3)]));
-        packing.insert(6, Vec::from([vertex(5)]));
+        let mut packing : VertexMap<Path> = VertexMap::default();
+        packing.insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
+        packing.insert(6, Path::TwoPath(vertex(5), vertex(6)));
         let mut augmenting_path = FlowNetwork::new(1);
 
         augmenting_path.add_pack_edges(&packing);
