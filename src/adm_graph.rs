@@ -1,4 +1,4 @@
-use crate::adm_data::AdmData;
+use crate::adm_data::{AdmData, Path};
 use crate::vias::Vias;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
@@ -113,8 +113,18 @@ impl<'a> AdmGraph<'a> {
             return;
         }
 
-        let path: Vec<Vertex> = u.remove_v_from_packing(&v);
-        let w = if !path.is_empty() { path[0] } else { v };
+        let path = u.remove_v_from_packing(&v);
+        let w = match path {
+            Some(path) => match path {
+                Path::TwoPath(x, _) => {
+                    x
+                },
+                Path::ThreePath(u, _, _) => {
+                    u
+                },
+            },
+            None => v
+        };
         let w_adm_data = self.adm_data.get(&w).unwrap();
 
         //check if we can add a path of length 2
