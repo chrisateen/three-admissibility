@@ -8,9 +8,9 @@ use std::cmp::max;
 
 mod adm_data;
 mod adm_graph;
+mod flow_network;
 mod utils;
 mod vias;
-mod flow_network;
 
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;

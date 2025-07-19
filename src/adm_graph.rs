@@ -1,8 +1,8 @@
 use crate::adm_data::{AdmData, Path};
+use crate::flow_network::FlowNetwork;
 use crate::vias::Vias;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
-use crate::flow_network::FlowNetwork;
 
 pub(crate) struct AdmGraph<'a> {
     pub l: VertexSet,
@@ -117,14 +117,10 @@ impl<'a> AdmGraph<'a> {
         let path = u.remove_v_from_packing(&v);
         let w = match path {
             Some(path) => match path {
-                Path::TwoPath(x, _) => {
-                    x
-                },
-                Path::ThreePath(u, _, _) => {
-                    u
-                },
+                Path::TwoPath(x, _) => x,
+                Path::ThreePath(u, _, _) => u,
             },
-            None => v
+            None => v,
         };
         let w_adm_data = self.adm_data.get(&w).unwrap();
 
@@ -240,7 +236,7 @@ impl<'a> AdmGraph<'a> {
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
 
-            let targets_u : VertexSet;
+            let targets_u: VertexSet;
 
             //check if a disjoint path can be added to packing of u
             if u_adm_data.size_of_packing() <= self.p {

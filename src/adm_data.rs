@@ -1,9 +1,9 @@
 use graphbench::graph::{Vertex, VertexMap, VertexSet};
 
-#[derive(Debug, PartialEq )]
+#[derive(Debug, PartialEq)]
 pub enum Path {
-    TwoPath(Vertex, Vertex), //t1_r. t2_l
-    ThreePath(Vertex, Vertex, Vertex) //t1_r, t2_r, t3_l
+    TwoPath(Vertex, Vertex),           //t1_r. t2_l
+    ThreePath(Vertex, Vertex, Vertex), //t1_r, t2_r, t3_l
 }
 
 pub struct AdmData {
@@ -66,12 +66,12 @@ impl AdmData {
             Path::TwoPath(x, y) => {
                 self.t1.remove(&x);
                 self.t2.remove(&y);
-            },
+            }
             Path::ThreePath(u, w, y) => {
                 self.t1.remove(&u);
                 self.t2.remove(&w);
                 self.t3.remove(&y);
-            },
+            }
         }
         Some(path)
     }
@@ -99,7 +99,10 @@ mod tests {
 
         assert_eq!(adm.packing.len(), 1);
         assert!(adm.packing.contains_key(&vertex(2)));
-        assert_eq!(adm.packing.get(&vertex(2)), Some(&Path::TwoPath(vertex(3), vertex(2))));
+        assert_eq!(
+            adm.packing.get(&vertex(2)),
+            Some(&Path::TwoPath(vertex(3), vertex(2)))
+        );
         assert!(adm.t1.contains(&vertex(3)));
         assert!(adm.t2.contains(&vertex(2)));
     }
@@ -112,7 +115,10 @@ mod tests {
 
         assert_eq!(adm.packing.len(), 1);
         assert!(adm.packing.contains_key(&vertex(4)));
-        assert_eq!(adm.packing.get(&vertex(4)), Some(&Path::ThreePath(vertex(5), vertex(6), vertex(4))));
+        assert_eq!(
+            adm.packing.get(&vertex(4)),
+            Some(&Path::ThreePath(vertex(5), vertex(6), vertex(4)))
+        );
         assert!(adm.t1.contains(&vertex(5)));
         assert!(adm.t2.contains(&vertex(6)));
     }
@@ -120,7 +126,8 @@ mod tests {
     #[test]
     fn delete_packing_clears_packing_t2_and_t3() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
-        adm.packing.insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
+        adm.packing
+            .insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
         adm.t1.insert(vertex(2));
         adm.t2.insert(vertex(3));
         adm.t3.insert(vertex(4));
@@ -179,7 +186,8 @@ mod tests {
     #[test]
     fn remove_v_from_packing_removes_t2_vertex() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
-        adm.packing.insert(vertex(3), Path::TwoPath(vertex(2), vertex(3)));
+        adm.packing
+            .insert(vertex(3), Path::TwoPath(vertex(2), vertex(3)));
         adm.t1.insert(vertex(2));
         adm.t2.insert(vertex(3));
 
@@ -192,12 +200,16 @@ mod tests {
     #[test]
     fn remove_v_from_packing_removes_t3_vertex() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
-        adm.packing.insert(vertex(4), Path::ThreePath(vertex(5), vertex(6), vertex(4)));
+        adm.packing
+            .insert(vertex(4), Path::ThreePath(vertex(5), vertex(6), vertex(4)));
         adm.t1.insert(vertex(5));
         adm.t2.insert(vertex(6));
 
         let removed = adm.remove_v_from_packing(&vertex(4));
-        assert_eq!(removed, Some(Path::ThreePath(vertex(5), vertex(6), vertex(4))));
+        assert_eq!(
+            removed,
+            Some(Path::ThreePath(vertex(5), vertex(6), vertex(4)))
+        );
         assert!(!adm.t1.contains(&vertex(5)));
         assert!(!adm.t2.contains(&vertex(6)));
         assert!(!adm.t3.contains(&vertex(4)));
@@ -208,8 +220,10 @@ mod tests {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
         adm.t1 = [2, 3, 4, 5].iter().cloned().collect();
         adm.n_in_r = [2, 3].iter().cloned().collect();
-        adm.packing.insert(vertex(6), Path::TwoPath(vertex(2), vertex(6)));
-        adm.packing.insert(vertex(8), Path::ThreePath(vertex(8), vertex(3), vertex(7)));
+        adm.packing
+            .insert(vertex(6), Path::TwoPath(vertex(2), vertex(6)));
+        adm.packing
+            .insert(vertex(8), Path::ThreePath(vertex(8), vertex(3), vertex(7)));
 
         //vertex 4,5 in t1 and not in r, vertex 6,7 in t3
         assert_eq!(adm.size_of_packing(), 4);
