@@ -92,46 +92,54 @@ impl FlowNetwork {
     /*
         Add all edges between N_R(v) that are not in the packing
          and vertices in pack that are in s2 and t
-         Also add vertices between N_R(v) and t through a via
     */
-    fn add_edges_containing_n_of_r(&mut self, n_in_r: &VertexSet,  graph: &EditGraph, vias: &Vias) {
+    fn add_direct_edge_from_n_r(&mut self, n_in_r: &VertexSet,  graph: &EditGraph){
         let s2_union_t: VertexSet = self.s2.union(&self.t_in).cloned().collect();
-        let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
-        for v in n_in_r.difference(&self.s1) {
-            let mut v_neighbours = self.edges.remove(v).unwrap_or_default();
-
-            //Check if N_R(v) is connected directly to a vertex in s2_union_t
-            for w in &s2_union_t {
-                if graph.adjacent(v, w){
-                    //edges are added as N_R(v) -> s2 or N_R(v) -> t
-                    v_neighbours.insert(*w);
-                    //add edge from root -> N_R(v) as well
-                    root_neighbours.insert(*v);
+        'outer: for y in &s2_union_t {
+            for x in n_in_r.difference(&self.s1){
+                if graph.adjacent(x, y){
+                    //add edge from root -> N_R(v) / x
+                    root_neighbours.insert(*x);
+                    //edges are added as N_R(v)/ x -> s2 or N_R(v) -> t
+                    let x_neighbours = self.edges.entry(*x).or_default();
+                    x_neighbours.insert(*y);
+                    continue 'outer;
                 }
+            }
+        }
+        self.edges.insert(self.id, root_neighbours);
+    }
 
-                //Check if we can add a via between N_R(v) and a target
-                if self.t_in.contains(w){
-                    let vias_v_w = vias.get_vias(*v,*w);
-                    if vias_v_w.is_some() {
-                        let eligible_via = vias_v_w.unwrap().difference(&s).next();
-                        if let Some(x) = eligible_via {
-                            let x_neighbours = self.edges.entry(*x).or_default();
-                            //edges are added as N_R(v) -> via
-                            //then via -> t
-                            v_neighbours.insert(*x);
-                            x_neighbours.insert(*w);
-                            //add edge from root -> N_R(v) as well
-                            root_neighbours.insert(*v);
-                        }
+    /*
+        Add all edges N_R(v) and t through a via
+    */
+    fn add_edge_with_via_from_n_r(&mut self, n_in_r: &VertexSet,  vias: &Vias){
+        let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
+        let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
+
+        'outer: for y in &self.t_in {
+            for x in n_in_r.difference(&self.s1){
+                let vias_x_y = vias.get_vias(*x,*y);
+                if vias_x_y.is_some() {
+                    let eligible_via = vias_x_y.unwrap().difference(&s).next();
+                    if let Some(w) = eligible_via {
+                        //add edge from root -> N_R(v) / x
+                        root_neighbours.insert(*x);
+
+                        //add edge from N_R(v) -> via / w
+                        let x_neighbours = self.edges.entry(*x).or_default();
+                        x_neighbours.insert(*w);
+
+                        //add edge from via -> t / y
+                        let w_neighbours = self.edges.entry(*w).or_default();
+                        w_neighbours.insert(*y);
+                        continue 'outer;
                     }
                 }
             }
-
-            self.edges.insert(*v, v_neighbours);
         }
-
         self.edges.insert(self.id, root_neighbours);
     }
 
@@ -141,24 +149,24 @@ impl FlowNetwork {
     fn add_vias_from_s1(&mut self, vias: &Vias) {
         let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
 
-        for v in &self.s1 {
-            let mut v_neighbours = self.edges.remove(v).unwrap_or_default();
-
+       'outer: for v in &self.s1 {
             for w in &self.t_in {
                 let vias_v_w = vias.get_vias(*v, *w);
-
                 if vias_v_w.is_some() {
                     let eligible_via = vias_v_w.unwrap().difference(&s).next();
                     if let Some(x) = eligible_via {
-                        let x_neighbours = self.edges.entry(*x).or_default();
                         //edges are added as s1 -> via
+                        let v_neighbours = self.edges.entry(*v).or_default();
                         v_neighbours.insert(*x);
+
                         //then via -> t
+                        let x_neighbours = self.edges.entry(*x).or_default();
                         x_neighbours.insert(*w);
+
+                        continue 'outer;
                     }
                 }
             }
-            self.edges.insert(*v, v_neighbours);
         }
     }
 
@@ -207,7 +215,8 @@ impl FlowNetwork {
     pub fn construct_flow_network(&mut self, adm_graph: &AdmGraph, u: &AdmData, targets: &VertexSet){
         self.add_pack_edges(&u.packing);
         self.add_edges_between(adm_graph.graph);
-        self.add_edges_containing_n_of_r(&u.n_in_r, adm_graph.graph, &adm_graph.vias);
+        self.add_direct_edge_from_n_r(&u.n_in_r, adm_graph.graph);
+        self.add_edge_with_via_from_n_r(&u.n_in_r, &adm_graph.vias);
         self.add_vias_from_s1(&adm_graph.vias);
         self.add_extra_targets(&adm_graph.adm_data, targets, &adm_graph.vias, &adm_graph.l);
     }
@@ -271,13 +280,147 @@ mod test_flow_network {
         network.edges.insert(vertex(2), [3].into_iter().collect());
         network.edges.insert(vertex(3), [4].into_iter().collect());
         network.edges.insert(vertex(5), [6].into_iter().collect());
-        network.s1 = [2,5].into_iter().collect();
-        network.s2 = [3].into_iter().collect();
-        network.t_in = [4,6].into_iter().collect();
 
         network.add_edges_between(&graph);
 
         assert_eq!(*network.edges.get(&2).unwrap(), [3,6].into_iter().collect());
         assert_eq!(*network.edges.get(&5).unwrap(), [3,6].into_iter().collect());
+    }
+
+    #[test]
+    fn add_direct_edge_from_n_r_adds_edge_between_n_r_and_s2(){
+        let edges: EdgeSet = [(1, 2), (1, 5), (2, 3), (3,4), (5,3), (6,3)]
+            .iter()
+            .cloned()
+            .collect();
+        let graph = create_test_graph(edges);
+        let mut network = FlowNetwork {
+            id: vertex(1),
+            s1: [2].into_iter().collect(),
+            s2: [3].into_iter().collect(),
+            t_in: [4].into_iter().collect(),
+            t_out: VertexSet::default(),
+            edges: VertexMap::default(),
+        };
+        network.edges.insert(vertex(1), [2].into_iter().collect());
+        network.edges.insert(vertex(2), [3].into_iter().collect());
+        network.edges.insert(vertex(3), [4].into_iter().collect());
+        let n_in_r : VertexSet = [2,5, 6].into_iter().collect();
+
+        network.add_direct_edge_from_n_r(&n_in_r, &graph);
+
+        assert_eq!(*network.edges.get(&5).unwrap(), [3].into_iter().collect());
+        assert_eq!(*network.edges.get(&1).unwrap(), [2,5].into_iter().collect());
+        //ensures only 1 edge is added from n_r to s2
+        assert!(!network.edges.contains_key(&6));
+    }
+
+    #[test]
+    fn add_direct_edge_from_n_r_adds_edge_between_n_r_and_target(){
+        let edges: EdgeSet = [(1, 2), (1, 5), (2, 3), (3,4), (4, 5), (4, 6)]
+            .iter()
+            .cloned()
+            .collect();
+        let graph = create_test_graph(edges);
+        let mut network = FlowNetwork {
+            id: vertex(1),
+            s1: [2].into_iter().collect(),
+            s2: [3].into_iter().collect(),
+            t_in: [4].into_iter().collect(),
+            t_out: VertexSet::default(),
+            edges: VertexMap::default(),
+        };
+        network.edges.insert(vertex(1), [2].into_iter().collect());
+        network.edges.insert(vertex(2), [3].into_iter().collect());
+        network.edges.insert(vertex(3), [4].into_iter().collect());
+        let n_in_r : VertexSet = [2,5].into_iter().collect();
+
+        network.add_direct_edge_from_n_r(&n_in_r, &graph);
+
+        assert_eq!(*network.edges.get(&5).unwrap(), [4].into_iter().collect());
+        assert_eq!(*network.edges.get(&1).unwrap(), [2,5].into_iter().collect());
+        //ensures only 1 edge is added from n_r to t
+        assert!(!network.edges.contains_key(&6));
+    }
+
+    #[test]
+    fn add_edge_with_via_from_n_r_adds_edge_with_via_between_n_r_and_target(){
+        let mut network = FlowNetwork {
+            id: vertex(1),
+            s1: [2].into_iter().collect(),
+            s2: [3].into_iter().collect(),
+            t_in: [4].into_iter().collect(),
+            t_out: VertexSet::default(),
+            edges: VertexMap::default(),
+        };
+        network.edges.insert(vertex(1), [2].into_iter().collect());
+        network.edges.insert(vertex(2), [3].into_iter().collect());
+        network.edges.insert(vertex(3), [4].into_iter().collect());
+        let n_in_r : VertexSet = [2,5,7].into_iter().collect();
+        let mut vias = Vias::new(10);
+        let mut four_vias_1: VertexMap<VertexSet> = VertexMap::default();
+        four_vias_1.insert(4, [6].into_iter().collect());
+        let mut four_vias_2: VertexMap<VertexSet> = VertexMap::default();
+        four_vias_2.insert(4, [8].into_iter().collect());
+        vias.vias.insert(5, four_vias_1);
+        vias.vias.insert(7, four_vias_2);
+
+        network.add_edge_with_via_from_n_r(&n_in_r, &vias);
+
+       assert_eq!(*network.edges.get(&5).unwrap(), [6].into_iter().collect());
+       assert_eq!(*network.edges.get(&6).unwrap(), [4].into_iter().collect());
+       assert_eq!(*network.edges.get(&1).unwrap(), [2,5].into_iter().collect());
+       //ensures only one of such edge is added for a target
+       assert!(!network.edges.contains_key(&7));
+    }
+
+    #[test]
+    fn add_vias_from_s1_adds_edge_with_via_between_s1_and_target(){
+        let mut network = FlowNetwork {
+            id: vertex(1),
+            s1: [2].into_iter().collect(),
+            s2: [3].into_iter().collect(),
+            t_in: [4].into_iter().collect(),
+            t_out: VertexSet::default(),
+            edges: VertexMap::default(),
+        };
+        network.edges.insert(vertex(1), [2].into_iter().collect());
+        network.edges.insert(vertex(2), [3].into_iter().collect());
+        network.edges.insert(vertex(3), [4].into_iter().collect());
+        let mut vias = Vias::new(10);
+        let mut four_vias: VertexMap<VertexSet> = VertexMap::default();
+        four_vias.insert(4, [5, 6].into_iter().collect());
+        vias.vias.insert(2, four_vias);
+
+        network.add_vias_from_s1(&vias);
+
+        assert_eq!(*network.edges.get(&2).unwrap(), [5, 3].into_iter().collect());
+        assert_eq!(*network.edges.get(&5).unwrap(), [4].into_iter().collect());
+        //ensures only one of such edge is added for a target
+        assert!(!network.edges.contains_key(&6));
+    }
+
+    #[test]
+    fn add_extra_targets_add_direct_targets_from_s(){
+        let mut network = FlowNetwork {
+            id: vertex(1),
+            s1: [2].into_iter().collect(),
+            s2: [3].into_iter().collect(),
+            t_in: [4].into_iter().collect(),
+            t_out: VertexSet::default(),
+            edges: VertexMap::default(),
+        };
+        network.edges.insert(vertex(1), [2].into_iter().collect());
+        network.edges.insert(vertex(2), [3].into_iter().collect());
+        network.edges.insert(vertex(3), [4].into_iter().collect());
+        let targets : VertexSet = [4,5,6,7,8].into_iter().collect();
+        let mut adm : VertexMap<AdmData> = VertexMap::default();
+        adm.insert(vertex(3), AdmData::new(vertex(3), [4,5,6].into_iter().collect()));
+        adm.insert(vertex(2), AdmData::new(vertex(2), [7, 8].into_iter().collect()));
+
+        network.add_extra_targets(&adm, &targets, &Vias::new(10), &targets.clone());
+
+        assert_eq!(*network.edges.get(&3).unwrap(), [4, 5].into_iter().collect());
+        assert_eq!(*network.edges.get(&2).unwrap(), [3, 8].into_iter().collect());
     }
 }
