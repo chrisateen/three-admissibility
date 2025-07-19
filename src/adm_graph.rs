@@ -5,14 +5,14 @@ use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 use crate::flow_network::FlowNetwork;
 
 pub(crate) struct AdmGraph<'a> {
-    l: VertexSet,
+    pub l: VertexSet,
     r: VertexSet,
     pub candidates: VertexSet,
-    adm_data: VertexMap<AdmData>,
+    pub adm_data: VertexMap<AdmData>,
     num_of_vertices: usize,
     p: usize,
-    graph: &'a EditGraph,
-    vias: Vias,
+    pub graph: &'a EditGraph,
+    pub vias: Vias,
 }
 
 impl<'a> AdmGraph<'a> {
@@ -220,9 +220,8 @@ impl<'a> AdmGraph<'a> {
         let t1: VertexSet = u.t1.intersection(&self.l).cloned().collect();
         let t2_t3: VertexSet = targets.difference(&t1).cloned().collect();
 
-        let mut aug_u = FlowNetwork::new(u.id);
-        aug_u.add_pack_edges(&u.packing);
-
+        let mut flow_network = FlowNetwork::new(u.id);
+        flow_network.construct_flow_network(self, u, targets);
     }
 
     /*

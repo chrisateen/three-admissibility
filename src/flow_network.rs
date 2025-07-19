@@ -1,6 +1,7 @@
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 use crate::adm_data::{AdmData, Path};
+use crate::adm_graph::AdmGraph;
 use crate::vias::Vias;
 
 pub struct FlowNetwork {
@@ -28,7 +29,7 @@ impl FlowNetwork {
         Add edges from pack of self.id
         edges added in a direction that points away from root
     */
-    pub fn add_pack_edges(&mut self, packing: &VertexMap<Path>) {
+    fn add_pack_edges(&mut self, packing: &VertexMap<Path>) {
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
 
         for w in packing.keys() {
@@ -65,7 +66,7 @@ impl FlowNetwork {
         Add all edges between vertices in packing
         edges added in a direction that points away from root
     */
-    pub fn add_edges_between(&mut self, graph: &EditGraph) {
+    fn add_edges_between(&mut self, graph: &EditGraph) {
         let s2_union_t: VertexSet = self.s2.union(&self.t_in).cloned().collect();
         for v in &self.s1 {
             for w in &s2_union_t {
@@ -93,7 +94,7 @@ impl FlowNetwork {
          and vertices in pack that are in s2 and t
          Also add vertices between N_R(v) and t through a via
     */
-    pub fn add_edges_containing_n_of_r(&mut self, n_in_r: VertexSet,  graph: &EditGraph, vias: &Vias) {
+    fn add_edges_containing_n_of_r(&mut self, n_in_r: &VertexSet,  graph: &EditGraph, vias: &Vias) {
         let s2_union_t: VertexSet = self.s2.union(&self.t_in).cloned().collect();
         let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
         let mut root_neighbours = self.edges.remove(&self.id).unwrap_or_default();
@@ -137,7 +138,7 @@ impl FlowNetwork {
     /*
        Add a via between each s1 and target
     */
-    pub fn add_vias_from_s1(&mut self, vias: &Vias) {
+    fn add_vias_from_s1(&mut self, vias: &Vias) {
         let s : VertexSet = self.s1.union(&self.s2).cloned().collect();
 
         for v in &self.s1 {
@@ -164,7 +165,7 @@ impl FlowNetwork {
     /*
         For each s1 and s2 add a target that is not already in the packing
     */
-    pub fn add_extra_targets(&mut self, adm_data: &VertexMap<AdmData>, targets: &VertexSet, vias: &Vias, l: &VertexSet) {
+    fn add_extra_targets(&mut self, adm_data: &VertexMap<AdmData>, targets: &VertexSet, vias: &Vias, l: &VertexSet) {
         let s1_s2 : VertexSet = self.s1.union(&self.s2).cloned().collect();
 
         'outer: for v in &s1_s2 {
@@ -203,14 +204,32 @@ impl FlowNetwork {
 
     }
 
+    pub fn construct_flow_network(&mut self, adm_graph: &AdmGraph, u: &AdmData, targets: &VertexSet){
+        self.add_pack_edges(&u.packing);
+        self.add_edges_between(adm_graph.graph);
+        self.add_edges_containing_n_of_r(&u.n_in_r, adm_graph.graph, &adm_graph.vias);
+        self.add_vias_from_s1(&adm_graph.vias);
+        self.add_extra_targets(&adm_graph.adm_data, targets, &adm_graph.vias, &adm_graph.l);
+    }
+
 }
 
 #[cfg(test)]
 mod test_flow_network {
+    use graphbench::graph::{EdgeSet, MutableGraph};
     use super::*;
 
     fn vertex(v: usize) -> Vertex {
         v as Vertex
+    }
+
+    fn create_test_graph(edges: EdgeSet) -> EditGraph {
+        let mut graph = EditGraph::new();
+        for (u, v) in edges.iter() {
+            graph.add_edge(u, v);
+        }
+
+        graph
     }
 
     #[test]
@@ -218,16 +237,47 @@ mod test_flow_network {
         let mut packing : VertexMap<Path> = VertexMap::default();
         packing.insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
         packing.insert(6, Path::TwoPath(vertex(5), vertex(6)));
-        let mut augmenting_path = FlowNetwork::new(1);
+        let mut network = FlowNetwork::new(1);
 
-        augmenting_path.add_pack_edges(&packing);
+        network.add_pack_edges(&packing);
 
-        assert_eq!(*augmenting_path.edges.get(&1).unwrap(), [2,5].into_iter().collect());
-        assert_eq!(*augmenting_path.edges.get(&2).unwrap(), [3].into_iter().collect());
-        assert_eq!(*augmenting_path.edges.get(&3).unwrap(), [4].into_iter().collect());
-        assert_eq!(*augmenting_path.edges.get(&5).unwrap(), [6].into_iter().collect());
-        assert!(!augmenting_path.edges.contains_key(&4));
-        assert!(!augmenting_path.edges.contains_key(&6));
-        assert_eq!(augmenting_path.s1, [2,5].into_iter().collect());
+        assert_eq!(*network.edges.get(&1).unwrap(), [2,5].into_iter().collect());
+        assert_eq!(*network.edges.get(&2).unwrap(), [3].into_iter().collect());
+        assert_eq!(*network.edges.get(&3).unwrap(), [4].into_iter().collect());
+        assert_eq!(*network.edges.get(&5).unwrap(), [6].into_iter().collect());
+        assert!(!network.edges.contains_key(&4));
+        assert!(!network.edges.contains_key(&6));
+        assert_eq!(network.s1, [2,5].into_iter().collect());
+        assert_eq!(network.s2, [3].into_iter().collect());
+        assert_eq!(network.t_in, [4,6].into_iter().collect());
+    }
+
+    #[test]
+    fn add_edges_between_adds_edges() {
+        let edges: EdgeSet = [(1, 2), (1, 5), (2, 3), (2,6),(3,4), (5,3), (5,6)]
+            .iter()
+            .cloned()
+            .collect();
+        let graph = create_test_graph(edges);
+        let mut network = FlowNetwork {
+            id: vertex(1),
+            s1: [2,5].into_iter().collect(),
+            s2: [3].into_iter().collect(),
+            t_in: [4,6].into_iter().collect(),
+            t_out: VertexSet::default(),
+            edges: VertexMap::default(),
+        };
+        network.edges.insert(vertex(1), [2,5].into_iter().collect());
+        network.edges.insert(vertex(2), [3].into_iter().collect());
+        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(vertex(5), [6].into_iter().collect());
+        network.s1 = [2,5].into_iter().collect();
+        network.s2 = [3].into_iter().collect();
+        network.t_in = [4,6].into_iter().collect();
+
+        network.add_edges_between(&graph);
+
+        assert_eq!(*network.edges.get(&2).unwrap(), [3,6].into_iter().collect());
+        assert_eq!(*network.edges.get(&5).unwrap(), [3,6].into_iter().collect());
     }
 }
