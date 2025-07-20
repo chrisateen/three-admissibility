@@ -222,26 +222,27 @@ impl FlowNetwork {
         Spilt edges in network to prepare for augmenting path
     */
     fn split_edges_in_network(&self) -> HashMap<i32, HashSet<i32>> {
-        let mut edges  = HashMap::default();
+        let mut edges = HashMap::default();
 
         for (v, neighbours) in self.edges.iter() {
-            let negative_set = neighbours
-                .iter()
-                .map(|&x| {
-                    -(x as i32)
-                })
-                .collect();
+            let negative_set = neighbours.iter().map(|&x| -(x as i32)).collect();
             let negative_v = -(*v as i32) as u32;
             edges.insert(*v as i32, negative_set);
 
             if *v != self.id {
-                edges.insert(negative_v as i32, [*v as i32].iter().copied().collect::<HashSet<i32>>());
+                edges.insert(
+                    negative_v as i32,
+                    [*v as i32].iter().copied().collect::<HashSet<i32>>(),
+                );
             }
         }
 
         for v in self.t_in.union(&self.t_out) {
             let negative_v: Vertex = -(*v as i32) as u32;
-            edges.insert(negative_v as i32,  [*v as i32].iter().copied().collect::<HashSet<i32>>());
+            edges.insert(
+                negative_v as i32,
+                [*v as i32].iter().copied().collect::<HashSet<i32>>(),
+            );
         }
 
         edges
@@ -333,7 +334,7 @@ impl FlowNetwork {
         //Keeps a track of the path from endpoint to root
         //Hashmap stores child -> parent to make it easy to get the right path from sink
         let mut path: HashMap<i32, i32> = HashMap::default();
-        let mut visited : HashSet<i32> = HashSet::default();
+        let mut visited: HashSet<i32> = HashSet::default();
         let mut queue: VecDeque<i32> = VecDeque::new();
         let root = self.id as i32;
 
@@ -390,7 +391,8 @@ impl FlowNetwork {
                 None => {}
                 Some(path) => {
                     //remove duplicate edges
-                    let path_without_duplicates: Vec<_> = path.into_iter().filter(|x| *x >= 0).collect();
+                    let path_without_duplicates: Vec<_> =
+                        path.into_iter().filter(|x| *x >= 0).collect();
                 }
             }
         }
@@ -736,38 +738,17 @@ mod test_flow_network {
             *result.get(&1).unwrap(),
             [-2i32, -6i32].into_iter().collect()
         );
-        assert_eq!(
-            *result.get(&(-(2i32))).unwrap(),
-            [2].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&(-(6i32))).unwrap(),
-            [6].into_iter().collect()
-        );
+        assert_eq!(*result.get(&(-(2i32))).unwrap(), [2].into_iter().collect());
+        assert_eq!(*result.get(&(-(6i32))).unwrap(), [6].into_iter().collect());
         assert_eq!(
             *result.get(&2).unwrap(),
             [-(3i32), -(5i32)].into_iter().collect()
         );
-        assert_eq!(
-            *result.get(&(-5i32)).unwrap(),
-            [5].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&3).unwrap(),
-            [-4i32].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&(-3i32)).unwrap(),
-            [3].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&(-4i32)).unwrap(),
-            [4].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&6).unwrap(),
-            [-4i32].into_iter().collect()
-        );
+        assert_eq!(*result.get(&(-5i32)).unwrap(), [5].into_iter().collect());
+        assert_eq!(*result.get(&3).unwrap(), [-4i32].into_iter().collect());
+        assert_eq!(*result.get(&(-3i32)).unwrap(), [3].into_iter().collect());
+        assert_eq!(*result.get(&(-4i32)).unwrap(), [4].into_iter().collect());
+        assert_eq!(*result.get(&6).unwrap(), [-4i32].into_iter().collect());
     }
 
     #[test]
@@ -778,7 +759,7 @@ mod test_flow_network {
         u_adm_data
             .packing
             .insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
-        let mut flow: HashMap<i32,HashSet<i32>> = HashMap::default();
+        let mut flow: HashMap<i32, HashSet<i32>> = HashMap::default();
         flow.insert(1, [-2i32, -6i32].into_iter().collect());
         flow.insert(-2i32, [2].into_iter().collect());
         flow.insert(-6i32, [6].into_iter().collect());
@@ -791,53 +772,26 @@ mod test_flow_network {
 
         let result = network.set_edges_direction(flow, &u_adm_data);
 
-        assert_eq!(
-            *result.get(&1).unwrap(),
-            [-6i32].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&(-2i32)).unwrap(),
-            [1].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&(-6i32)).unwrap(),
-            [6].into_iter().collect()
-        );
+        assert_eq!(*result.get(&1).unwrap(), [-6i32].into_iter().collect());
+        assert_eq!(*result.get(&(-2i32)).unwrap(), [1].into_iter().collect());
+        assert_eq!(*result.get(&(-6i32)).unwrap(), [6].into_iter().collect());
         assert_eq!(
             *result.get(&2).unwrap(),
             [-2i32, -5i32].into_iter().collect()
         );
-        assert_eq!(
-            *result.get(&(-5i32)).unwrap(),
-            [5].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&(-3i32)).unwrap(),
-            [2].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&3).unwrap(),
-            [-3i32].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&(-4i32)).unwrap(),
-            [3].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&6).unwrap(),
-            [-4i32].into_iter().collect()
-        );
-        assert_eq!(
-            *result.get(&4).unwrap(),
-            [-4i32].into_iter().collect()
-        );
+        assert_eq!(*result.get(&(-5i32)).unwrap(), [5].into_iter().collect());
+        assert_eq!(*result.get(&(-3i32)).unwrap(), [2].into_iter().collect());
+        assert_eq!(*result.get(&3).unwrap(), [-3i32].into_iter().collect());
+        assert_eq!(*result.get(&(-4i32)).unwrap(), [3].into_iter().collect());
+        assert_eq!(*result.get(&6).unwrap(), [-4i32].into_iter().collect());
+        assert_eq!(*result.get(&4).unwrap(), [-4i32].into_iter().collect());
     }
 
     #[test]
     fn bfs_returns_path_if_there_is_a_path_from_root_to_t_out() {
         let mut network = FlowNetwork::new(vertex(1));
         network.t_out.insert(vertex(10));
-        let mut flow: HashMap<i32,HashSet<i32>> = HashMap::default();
+        let mut flow: HashMap<i32, HashSet<i32>> = HashMap::default();
         flow.insert(1, [2].into_iter().collect());
         flow.insert(2, [3].into_iter().collect());
         flow.insert(3, [4].into_iter().collect());
@@ -856,7 +810,7 @@ mod test_flow_network {
     #[test]
     fn bfs_returns_none_if_there_is_not_a_path_from_root_to_t_out() {
         let mut network = FlowNetwork::new(vertex(1));
-        let mut flow: HashMap<i32,HashSet<i32>> = HashMap::default();
+        let mut flow: HashMap<i32, HashSet<i32>> = HashMap::default();
         flow.insert(1, [5].into_iter().collect());
         flow.insert(5, [6].into_iter().collect());
         flow.insert(6, [4].into_iter().collect());
