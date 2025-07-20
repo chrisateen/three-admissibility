@@ -53,6 +53,7 @@ impl<'a> AdmGraph<'a> {
         v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
 
         for u in v.n_in_r.clone() {
+            debug_assert!(self.r.contains(&u));
             let u_adm_data = self.adm_data.get(&u).unwrap();
 
             for w in u_adm_data.t1.difference(&self.l) {
@@ -123,6 +124,7 @@ impl<'a> AdmGraph<'a> {
             None => v,
         };
         let w_adm_data = self.adm_data.get(&w).unwrap();
+        debug_assert!(self.r.contains(&w));
 
         //check if we can add a path of length 2
         for x in w_adm_data.t1.intersection(&self.l) {
@@ -167,11 +169,13 @@ impl<'a> AdmGraph<'a> {
         let t3_and_t2: VertexSet = targets.difference(&t1).cloned().collect();
 
         for w in u.n_in_r.clone() {
+            debug_assert!(self.r.contains(&w));
             if u.is_v_in_pack(&w) {
                 continue;
             }
 
             for y in &t3_and_t2 {
+                debug_assert!(self.l.contains(y));
                 if *y == u.id {
                     continue;
                 }
@@ -223,11 +227,13 @@ impl<'a> AdmGraph<'a> {
     */
     fn update(&mut self, v: &Vertex) {
         let mut v_adm_data = self.adm_data.remove(v).unwrap();
+        debug_assert!(v_adm_data.size_of_packing() <= self.p);
         let t = self.collect_targets(&v_adm_data);
         self.compute_vias(&mut v_adm_data);
         self.adm_data.insert(*v, v_adm_data);
 
         for u in t {
+            debug_assert!(self.l.contains(&u));
             if self.candidates.contains(&u) {
                 continue;
             }
@@ -271,6 +277,8 @@ impl<'a> AdmGraph<'a> {
 
         match v {
             Some(&v) => {
+                debug_assert!(self.l.contains(&v));
+                debug_assert!(!self.r.contains(&v));
                 self.candidates.remove(&v);
                 self.l.remove(&v);
                 self.r.insert(v);

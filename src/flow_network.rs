@@ -4,6 +4,7 @@ use crate::vias::Vias;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::ops::Neg;
 
 pub struct FlowNetwork {
     pub id: Vertex,
@@ -367,25 +368,18 @@ impl FlowNetwork {
     }
 
     /*
-        Use bfs and the augmenting path found to figure out the edges for the new packing
+        Use bfs to figure out the edges for the new packing
     */
     fn get_new_packing_edges(
         &self,
-        u: &mut AdmData,
-        new_path: VertexSet,
+        aug_path_vertices: VertexSet,
+        flow: HashMap<i32, HashSet<i32>>,
     ) -> (VertexMap<Vertex>, VertexSet) {
-        let vertices_in_pack: VertexSet =
-            self.s1.union(&self.s2).chain(&self.t_in).cloned().collect();
-        let vertices_to_modify: VertexSet = new_path
-            .symmetric_difference(&vertices_in_pack)
-            .cloned()
-            .collect();
         let mut edges: VertexMap<Vertex> = HashMap::default();
         let mut visited: VertexSet = VertexSet::default();
         let mut queue: VecDeque<Vertex> = VecDeque::new();
         let mut t = VertexSet::default();
 
-        visited.insert(self.id);
         queue.push_back(self.id);
 
         while let Some(w) = queue.pop_front() {
@@ -394,23 +388,22 @@ impl FlowNetwork {
                     if !visited.contains(x) {
                         queue.push_back(*x);
                         visited.insert(*x);
-                        if u.is_v_in_pack(x) {
-                            //if a vertex is in original packing
-                            //but is in the set of vertices to modify
-                            //we don't add the edge as it's not a vertex that
-                            //was part of the augmenting path
-                            if !vertices_to_modify.contains(x) {
+
+                        //Any edge in augmenting path but not in original packing is added
+                        if aug_path_vertices.contains(&w) & aug_path_vertices.contains(x) {
+                            //this would also be neighbours of w not in original packing
+                            let w_neighbours_in_flow = flow.get(&(w as i32)).unwrap();
+                            if w_neighbours_in_flow.contains(&(*x as i32).neg()) || w == self.id {
                                 edges.insert(*x, w);
-                                if self.t_in.contains(&w) || self.t_out.contains(&w) {
-                                    t.insert(w);
+                                if self.t_in.contains(x) || self.t_out.contains(x) {
+                                    t.insert(*x);
                                 }
                             }
-                        } else if vertices_to_modify.contains(x) {
-                            //if a vertex that is not in original packing
-                            //but in the augmenting path we need add it
+                            //Any edge in original packing and not in augmenting path remains in new pack
+                        } else if !aug_path_vertices.contains(&x) {
                             edges.insert(*x, w);
-                            if self.t_in.contains(&w) || self.t_out.contains(&w) {
-                                t.insert(w);
+                            if self.t_in.contains(x) || self.t_out.contains(x) {
+                                t.insert(*x);
                             }
                         }
                     }
@@ -424,11 +417,16 @@ impl FlowNetwork {
     /*
         Update packing based on results of augmenting path
     */
-    fn update_packing(&self, u: &mut AdmData, new_edges: VertexMap<Vertex>, new_t: VertexSet) {
+    fn update_packing(&self, u: &mut AdmData, new_edges: VertexMap<Vertex>, new_t: &VertexSet) {
         u.delete_packing();
-        for v in new_t.iter() {
-            let v_neighbours = new_edges.get(v).unwrap();
-           
+        for v in new_t {
+            let n1 = new_edges.get(v).unwrap(); //s2 if v is in t3 or s1 if v is in t2
+            let n2 = new_edges.get(n1).unwrap(); //s1 if v is in t2 or root if v is in t1
+            if *n2 == self.id {
+                u.add_t2_to_packing(v,n1);
+            } else {
+                u.add_t3_to_packing(v,n2, n1);
+            }
         }
     }
 
@@ -450,6 +448,8 @@ impl FlowNetwork {
         let split_edges = self.split_edges_in_network();
         let flow = self.set_edges_direction(split_edges, u);
 
+        //See if there is an augmenting path from source to a target not in packing
+        //Once a path is found update u's original packing
         for v in flow.get(&(self.id as i32)).unwrap() {
             match self.bfs(*v, &flow) {
                 None => {}
@@ -460,8 +460,9 @@ impl FlowNetwork {
                         .filter(|x| *x >= 0)
                         .map(|x| x as Vertex)
                         .collect();
-                    let (new_edges, new_t) = self.get_new_packing_edges(u,path_without_duplicates);
-                    self.update_packing(u, new_edges, new_t);
+                    let (new_edges, new_t) =
+                        self.get_new_packing_edges(path_without_duplicates, flow);
+                    self.update_packing(u, new_edges, &new_t);
                     return;
                 }
             }
@@ -473,10 +474,7 @@ impl FlowNetwork {
 mod test_flow_network {
     use super::*;
     use graphbench::graph::{EdgeSet, MutableGraph};
-
-    fn vertex(v: usize) -> Vertex {
-        v as Vertex
-    }
+    use crate::adm_data::Path;
 
     fn create_test_graph(edges: EdgeSet) -> EditGraph {
         let mut graph = EditGraph::new();
@@ -490,8 +488,8 @@ mod test_flow_network {
     #[test]
     fn add_pack_edges_add_edges_in_correct_order() {
         let mut packing: VertexMap<Path> = VertexMap::default();
-        packing.insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
-        packing.insert(6, Path::TwoPath(vertex(5), vertex(6)));
+        packing.insert(4, Path::ThreePath(2, 3, 4));
+        packing.insert(6, Path::TwoPath(5, 6));
         let mut network = FlowNetwork::new(1);
 
         network.add_pack_edges(&packing);
@@ -518,7 +516,7 @@ mod test_flow_network {
             .collect();
         let graph = create_test_graph(edges);
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2, 5].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4, 6].into_iter().collect(),
@@ -527,10 +525,10 @@ mod test_flow_network {
         };
         network
             .edges
-            .insert(vertex(1), [2, 5].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
-        network.edges.insert(vertex(5), [6].into_iter().collect());
+            .insert(1, [2, 5].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
+        network.edges.insert(5, [6].into_iter().collect());
 
         network.add_edges_between(&graph);
 
@@ -552,16 +550,16 @@ mod test_flow_network {
             .collect();
         let graph = create_test_graph(edges);
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
             t_out: VertexSet::default(),
             edges: VertexMap::default(),
         };
-        network.edges.insert(vertex(1), [2].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(1, [2].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
         let n_in_r: VertexSet = [2, 5, 6].into_iter().collect();
 
         network.add_direct_edge_from_n_r(&n_in_r, &graph);
@@ -583,16 +581,16 @@ mod test_flow_network {
             .collect();
         let graph = create_test_graph(edges);
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
             t_out: VertexSet::default(),
             edges: VertexMap::default(),
         };
-        network.edges.insert(vertex(1), [2].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(1, [2].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
         let n_in_r: VertexSet = [2, 5].into_iter().collect();
 
         network.add_direct_edge_from_n_r(&n_in_r, &graph);
@@ -609,16 +607,16 @@ mod test_flow_network {
     #[test]
     fn add_edge_with_via_from_n_r_adds_edge_with_via_between_n_r_and_target() {
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
             t_out: VertexSet::default(),
             edges: VertexMap::default(),
         };
-        network.edges.insert(vertex(1), [2].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(1, [2].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
         let n_in_r: VertexSet = [2, 5, 7].into_iter().collect();
         let mut vias = Vias::new(10);
         let mut four_vias_1: VertexMap<VertexSet> = VertexMap::default();
@@ -643,16 +641,16 @@ mod test_flow_network {
     #[test]
     fn add_vias_from_s1_adds_edge_with_via_between_s1_and_target() {
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
             t_out: VertexSet::default(),
             edges: VertexMap::default(),
         };
-        network.edges.insert(vertex(1), [2].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(1, [2].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
         let mut vias = Vias::new(10);
         let mut four_vias: VertexMap<VertexSet> = VertexMap::default();
         four_vias.insert(4, [5, 6].into_iter().collect());
@@ -672,25 +670,25 @@ mod test_flow_network {
     #[test]
     fn add_extra_targets_add_direct_targets_from_s() {
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
             t_out: VertexSet::default(),
             edges: VertexMap::default(),
         };
-        network.edges.insert(vertex(1), [2].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(1, [2].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
         let targets: VertexSet = [4, 5, 6, 7, 8].into_iter().collect();
         let mut adm: VertexMap<AdmData> = VertexMap::default();
         adm.insert(
-            vertex(3),
-            AdmData::new(vertex(3), [4, 5, 6].into_iter().collect()),
+            3,
+            AdmData::new(3, [4, 5, 6].into_iter().collect()),
         );
         adm.insert(
-            vertex(2),
-            AdmData::new(vertex(2), [7, 8].into_iter().collect()),
+            2,
+            AdmData::new(2, [7, 8].into_iter().collect()),
         );
 
         network.add_extra_targets(&adm, &targets, &Vias::new(10), &targets.clone());
@@ -708,23 +706,23 @@ mod test_flow_network {
     #[test]
     fn add_extra_targets_add_indirect_targets_from_s1() {
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
             t_out: VertexSet::default(),
             edges: VertexMap::default(),
         };
-        network.edges.insert(vertex(1), [2].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(1, [2].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
         let targets: VertexSet = [4, 6, 8].into_iter().collect();
         let mut adm: VertexMap<AdmData> = VertexMap::default();
         adm.insert(
-            vertex(3),
-            AdmData::new(vertex(3), [4].into_iter().collect()),
+            3,
+            AdmData::new(3, [4].into_iter().collect()),
         );
-        adm.insert(vertex(2), AdmData::new(vertex(2), VertexSet::default()));
+        adm.insert(2, AdmData::new(2, VertexSet::default()));
         let mut vias = Vias::new(10);
         let mut two_vias: VertexMap<VertexSet> = VertexMap::default();
         two_vias.insert(8, [7].into_iter().collect());
@@ -746,25 +744,25 @@ mod test_flow_network {
     #[test]
     fn add_extra_targets_does_not_add_indirect_targets_from_s1_if_a_direct_extra_target_exists() {
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
             t_out: VertexSet::default(),
             edges: VertexMap::default(),
         };
-        network.edges.insert(vertex(1), [2].into_iter().collect());
-        network.edges.insert(vertex(2), [3].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
+        network.edges.insert(1, [2].into_iter().collect());
+        network.edges.insert(2, [3].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
         let targets: VertexSet = [4, 6, 7].into_iter().collect();
         let mut adm: VertexMap<AdmData> = VertexMap::default();
         adm.insert(
-            vertex(3),
-            AdmData::new(vertex(3), [4].into_iter().collect()),
+            3,
+            AdmData::new(3, [4].into_iter().collect()),
         );
         adm.insert(
-            vertex(2),
-            AdmData::new(vertex(2), [7].into_iter().collect()),
+            2,
+            AdmData::new(2, [7].into_iter().collect()),
         );
         let mut vias = Vias::new(10);
         let mut two_vias: VertexMap<VertexSet> = VertexMap::default();
@@ -785,7 +783,7 @@ mod test_flow_network {
     #[test]
     fn split_edges_in_network_creates_new_graph_with_split_edges() {
         let mut network = FlowNetwork {
-            id: vertex(1),
+            id: 1,
             s1: [2, 6].into_iter().collect(),
             s2: [3].into_iter().collect(),
             t_in: [4].into_iter().collect(),
@@ -794,73 +792,64 @@ mod test_flow_network {
         };
         network
             .edges
-            .insert(vertex(1), [2, 6].into_iter().collect());
+            .insert(1, [2, 6].into_iter().collect());
         network
             .edges
-            .insert(vertex(2), [3, 5].into_iter().collect());
-        network.edges.insert(vertex(3), [4].into_iter().collect());
-        network.edges.insert(vertex(6), [4].into_iter().collect());
+            .insert(2, [3, 5].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
+        network.edges.insert(6, [4].into_iter().collect());
 
         let result = network.split_edges_in_network();
 
-        assert!(!result.contains_key(&(-1i32)));
-        assert_eq!(
-            *result.get(&1).unwrap(),
-            [-2i32, -6i32].into_iter().collect()
-        );
-        assert_eq!(*result.get(&(-(2i32))).unwrap(), [2].into_iter().collect());
-        assert_eq!(*result.get(&(-(6i32))).unwrap(), [6].into_iter().collect());
-        assert_eq!(
-            *result.get(&2).unwrap(),
-            [-(3i32), -(5i32)].into_iter().collect()
-        );
-        assert_eq!(*result.get(&(-5i32)).unwrap(), [5].into_iter().collect());
-        assert_eq!(*result.get(&3).unwrap(), [-4i32].into_iter().collect());
-        assert_eq!(*result.get(&(-3i32)).unwrap(), [3].into_iter().collect());
-        assert_eq!(*result.get(&(-4i32)).unwrap(), [4].into_iter().collect());
-        assert_eq!(*result.get(&6).unwrap(), [-4i32].into_iter().collect());
+        assert!(!result.contains_key(&(-1)));
+        assert_eq!(*result.get(&1).unwrap(), [-2, -6].into_iter().collect());
+        assert_eq!(*result.get(&(-2)).unwrap(), [2].into_iter().collect());
+        assert_eq!(*result.get(&(-6)).unwrap(), [6].into_iter().collect());
+        assert_eq!(*result.get(&2).unwrap(), [-3, -5].into_iter().collect());
+        assert_eq!(*result.get(&(-5)).unwrap(), [5].into_iter().collect());
+        assert_eq!(*result.get(&3).unwrap(), [-4].into_iter().collect());
+        assert_eq!(*result.get(&(-3)).unwrap(), [3].into_iter().collect());
+        assert_eq!(*result.get(&(-4)).unwrap(), [4].into_iter().collect());
+        assert_eq!(*result.get(&6).unwrap(), [-4].into_iter().collect());
     }
 
     #[test]
     fn set_edges_direction_reverses_edges_in_packing() {
-        let u = vertex(1);
+        let u = 1;
         let network = FlowNetwork::new(u);
         let mut u_adm_data = AdmData::new(u, VertexSet::default());
         u_adm_data
             .packing
-            .insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
+            .insert(4, Path::ThreePath(2, 3, 4));
         let mut flow: HashMap<i32, HashSet<i32>> = HashMap::default();
-        flow.insert(1, [-2i32, -6i32].into_iter().collect());
-        flow.insert(-2i32, [2].into_iter().collect());
-        flow.insert(-6i32, [6].into_iter().collect());
-        flow.insert(2, [-3i32, -5i32].into_iter().collect());
-        flow.insert(-5i32, [5].into_iter().collect());
-        flow.insert(-3i32, [3].into_iter().collect());
-        flow.insert(3, [-4i32].into_iter().collect());
-        flow.insert(-4i32, [4].into_iter().collect());
-        flow.insert(6, [-4i32].into_iter().collect());
+        flow.insert(1, [-2, -6].into_iter().collect());
+        flow.insert(-2, [2].into_iter().collect());
+        flow.insert(-6, [6].into_iter().collect());
+        flow.insert(2, [-3, -5].into_iter().collect());
+        flow.insert(-5, [5].into_iter().collect());
+        flow.insert(-3, [3].into_iter().collect());
+        flow.insert(3, [-4].into_iter().collect());
+        flow.insert(-4, [4].into_iter().collect());
+        flow.insert(6, [-4].into_iter().collect());
 
         let result = network.set_edges_direction(flow, &u_adm_data);
 
-        assert_eq!(*result.get(&1).unwrap(), [-6i32].into_iter().collect());
-        assert_eq!(*result.get(&(-2i32)).unwrap(), [1].into_iter().collect());
-        assert_eq!(*result.get(&(-6i32)).unwrap(), [6].into_iter().collect());
-        assert_eq!(
-            *result.get(&2).unwrap(),
-            [-2i32, -5i32].into_iter().collect()
-        );
-        assert_eq!(*result.get(&(-5i32)).unwrap(), [5].into_iter().collect());
-        assert_eq!(*result.get(&(-3i32)).unwrap(), [2].into_iter().collect());
-        assert_eq!(*result.get(&3).unwrap(), [-3i32].into_iter().collect());
-        assert_eq!(*result.get(&(-4i32)).unwrap(), [3].into_iter().collect());
-        assert_eq!(*result.get(&6).unwrap(), [-4i32].into_iter().collect());
-        assert_eq!(*result.get(&4).unwrap(), [-4i32].into_iter().collect());
+        assert_eq!(*result.get(&1).unwrap(), [-6].into_iter().collect());
+        assert_eq!(*result.get(&(-2)).unwrap(), [1].into_iter().collect());
+        assert_eq!(*result.get(&(-6)).unwrap(), [6].into_iter().collect());
+        assert_eq!(*result.get(&2).unwrap(), [-2, -5].into_iter().collect());
+        assert_eq!(*result.get(&(-5)).unwrap(), [5].into_iter().collect());
+        assert_eq!(*result.get(&(-3)).unwrap(), [2].into_iter().collect());
+        assert_eq!(*result.get(&3).unwrap(), [-3].into_iter().collect());
+        assert_eq!(*result.get(&(-4)).unwrap(), [3].into_iter().collect());
+        assert_eq!(*result.get(&6).unwrap(), [-4].into_iter().collect());
+        assert_eq!(*result.get(&4).unwrap(), [-4].into_iter().collect());
     }
 
     #[test]
     fn bfs_returns_path_if_there_is_a_path_from_root_to_t_out() {
-        let mut network = FlowNetwork::new(vertex(1));
-        network.t_out.insert(vertex(10));
+        let mut network = FlowNetwork::new(1);
+        network.t_out.insert(10);
         let mut flow: HashMap<i32, HashSet<i32>> = HashMap::default();
         flow.insert(1, [2].into_iter().collect());
         flow.insert(2, [3].into_iter().collect());
@@ -879,7 +868,7 @@ mod test_flow_network {
 
     #[test]
     fn bfs_returns_none_if_there_is_not_a_path_from_root_to_t_out() {
-        let mut network = FlowNetwork::new(vertex(1));
+        let mut network = FlowNetwork::new(1);
         let mut flow: HashMap<i32, HashSet<i32>> = HashMap::default();
         flow.insert(1, [5].into_iter().collect());
         flow.insert(5, [6].into_iter().collect());
@@ -891,5 +880,55 @@ mod test_flow_network {
         let result = network.bfs(5, &flow);
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn get_new_packing_edges_returns_correct_edges() {
+        let mut network = FlowNetwork::new(1);
+        network.t_in = [4].into_iter().collect();
+        network.t_out = [6].into_iter().collect();
+        network.edges.insert(1, [2, 5].into_iter().collect());
+        network.edges.insert(2, [3, 6].into_iter().collect());
+        network.edges.insert(3, [4].into_iter().collect());
+        network.edges.insert(5, [3].into_iter().collect());
+        let aug_path_vertices: VertexSet = [1, 5, 3, 2, 6].into_iter().collect();
+        let mut flow: HashMap<i32, HashSet<i32>> = HashMap::default();
+        flow.insert(1, [-5].into_iter().collect());
+        flow.insert(-2, [1].into_iter().collect());
+        flow.insert(2, [-2, -6].into_iter().collect());
+        flow.insert(-3, [2].into_iter().collect());
+        flow.insert(3, [-3].into_iter().collect());
+        flow.insert(-4, [3].into_iter().collect());
+        flow.insert(4, [-4].into_iter().collect());
+        flow.insert(-5, [5].into_iter().collect());
+        flow.insert(5, [-3].into_iter().collect());
+        flow.insert(-6, [6].into_iter().collect());
+
+        let (new_edges, new_t) = network.get_new_packing_edges(aug_path_vertices, flow);
+
+        assert_eq!(new_t, [4, 6].into_iter().collect());
+        assert_eq!(*new_edges.get(&2).unwrap(), 1);
+        assert_eq!(*new_edges.get(&5).unwrap(), 1);
+        assert_eq!(*new_edges.get(&6).unwrap(), 2);
+        assert_eq!(*new_edges.get(&3).unwrap(), 5);
+        assert_eq!(*new_edges.get(&4).unwrap(), 3);
+    }
+    
+    #[test]
+    fn update_packing_updates_packing_correctly(){
+        let network = FlowNetwork::new(1);
+        let mut u_adm_data = AdmData::new(1, VertexSet::default());
+        let mut new_edges : VertexMap<Vertex> = VertexMap::default();
+        let new_t : VertexSet = [4,6].into_iter().collect();
+        new_edges.insert(4,3);
+        new_edges.insert(3,2);
+        new_edges.insert(2,1);
+        new_edges.insert(5,1);
+        new_edges.insert(6,5);
+
+        network.update_packing(&mut u_adm_data, new_edges, &new_t);
+
+        assert_eq!(*u_adm_data.packing.get(&6).unwrap(), Path::TwoPath(5, 6));
+        assert_eq!(*u_adm_data.packing.get(&4).unwrap(), Path::ThreePath(2,3,4));
     }
 }
