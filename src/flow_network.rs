@@ -3,7 +3,7 @@ use crate::adm_graph::AdmGraph;
 use crate::vias::Vias;
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct FlowNetwork {
     pub id: Vertex,
@@ -221,28 +221,27 @@ impl FlowNetwork {
     /*
         Spilt edges in network to prepare for augmenting path
     */
-    fn split_edges_in_network(&self) -> VertexMap<VertexSet> {
-        let mut edges: VertexMap<VertexSet> = VertexMap::default();
+    fn split_edges_in_network(&self) -> HashMap<i32, HashSet<i32>> {
+        let mut edges  = HashMap::default();
 
         for (v, neighbours) in self.edges.iter() {
-            let negative_set: VertexSet = neighbours
+            let negative_set = neighbours
                 .iter()
                 .map(|&x| {
-                    let neg = -(x as i32);
-                    neg as u32
+                    -(x as i32)
                 })
                 .collect();
-            let negative_v: Vertex = -(*v as i32) as u32;
-            edges.insert(*v, negative_set);
+            let negative_v = -(*v as i32) as u32;
+            edges.insert(*v as i32, negative_set);
 
             if *v != self.id {
-                edges.insert(negative_v, [*v].into_iter().collect::<VertexSet>());
+                edges.insert(negative_v as i32, [*v as i32].iter().copied().collect::<HashSet<i32>>());
             }
         }
 
         for v in self.t_in.union(&self.t_out) {
             let negative_v: Vertex = -(*v as i32) as u32;
-            edges.insert(negative_v, [*v].into_iter().collect::<VertexSet>());
+            edges.insert(negative_v as i32,  [*v as i32].iter().copied().collect::<HashSet<i32>>());
         }
 
         edges
@@ -253,75 +252,76 @@ impl FlowNetwork {
     */
     fn set_edges_direction(
         &self,
-        edges: VertexMap<VertexSet>,
+        edges: HashMap<i32, HashSet<i32>>,
         u: &AdmData,
-    ) -> VertexMap<VertexSet> {
+    ) -> HashMap<i32, HashSet<i32>> {
         let mut flow = edges.clone();
-        let mut root_neighbours = flow.remove(&self.id).unwrap();
+        let root = self.id as i32;
+        let mut root_neighbours = flow.remove(&root).unwrap();
 
         for w in u.packing.keys() {
             let path = u.packing.get(w).unwrap();
 
             match path {
                 Path::TwoPath(s1, t2) => {
-                    let negative_s1: Vertex = -(*s1 as i32) as u32;
-                    let negative_t2: Vertex = -(*t2 as i32) as u32;
+                    let negative_s1 = -(*s1 as i32);
+                    let negative_t2 = -(*t2 as i32);
 
                     //reverse root -> -s1 -> s1 -> -t2 -> t2
                     // to t2 -> -t2 -> s1 -> -s1 -> root
                     root_neighbours.remove(&negative_s1);
 
                     let negative_s1_neighbours = flow.get_mut(&negative_s1).unwrap();
-                    negative_s1_neighbours.insert(self.id);
-                    negative_s1_neighbours.remove(s1);
+                    negative_s1_neighbours.insert(root);
+                    negative_s1_neighbours.remove(&(*s1 as i32));
 
-                    let s1_neighbours = flow.get_mut(s1).unwrap();
+                    let s1_neighbours = flow.get_mut(&(*s1 as i32)).unwrap();
                     s1_neighbours.insert(negative_s1);
                     s1_neighbours.remove(&negative_t2);
 
                     let negative_t2_neighbours = flow.get_mut(&negative_t2).unwrap();
-                    negative_t2_neighbours.insert(*s1);
-                    negative_t2_neighbours.remove(t2);
+                    negative_t2_neighbours.insert(*s1 as i32);
+                    negative_t2_neighbours.remove(&(*t2 as i32));
 
-                    let t2_neighbours = flow.entry(*t2).or_default();
+                    let t2_neighbours = flow.entry(*t2 as i32).or_default();
                     t2_neighbours.insert(negative_t2);
                 }
                 Path::ThreePath(s1, s2, t3) => {
-                    let negative_s1: Vertex = -(*s1 as i32) as u32;
-                    let negative_s2: Vertex = -(*s2 as i32) as u32;
-                    let negative_t3: Vertex = -(*t3 as i32) as u32;
+                    let negative_s1 = -(*s1 as i32);
+                    let negative_s2 = -(*s2 as i32);
+                    let negative_t3 = -(*t3 as i32);
 
                     //reverse root -> -s1 -> s1 -> -s2 -> s2 -> -t3 -> t3
                     // to t3 -> -t3 -> s2 -> -s2 -> s1 -> -s1 -> root
                     root_neighbours.remove(&negative_s1);
 
                     let negative_s1_neighbours = flow.get_mut(&negative_s1).unwrap();
-                    negative_s1_neighbours.insert(self.id);
-                    negative_s1_neighbours.remove(s1);
+                    negative_s1_neighbours.insert(root);
+                    negative_s1_neighbours.remove(&(*s1 as i32));
 
-                    let s1_neighbours = flow.get_mut(s1).unwrap();
+                    let s1_neighbours = flow.get_mut(&(*s1 as i32)).unwrap();
                     s1_neighbours.insert(negative_s1);
                     s1_neighbours.remove(&negative_s2);
 
                     let negative_s2_neighbours = flow.get_mut(&negative_s2).unwrap();
-                    negative_s2_neighbours.insert(*s1);
-                    negative_s2_neighbours.remove(s2);
+                    negative_s2_neighbours.insert(*s1 as i32);
+                    negative_s2_neighbours.remove(&(*s2 as i32));
 
-                    let s2_neighbours = flow.get_mut(s2).unwrap();
+                    let s2_neighbours = flow.get_mut(&(*s2 as i32)).unwrap();
                     s2_neighbours.insert(negative_s2);
                     s2_neighbours.remove(&negative_t3);
 
                     let negative_t3_neighbours = flow.get_mut(&negative_t3).unwrap();
-                    negative_t3_neighbours.insert(*s2);
-                    negative_t3_neighbours.remove(t3);
+                    negative_t3_neighbours.insert(*s2 as i32);
+                    negative_t3_neighbours.remove(&(*t3 as i32));
 
-                    let t3_neighbours = flow.entry(*t3).or_default();
+                    let t3_neighbours = flow.entry(*t3 as i32).or_default();
                     t3_neighbours.insert(negative_t3);
                 }
             }
         }
 
-        flow.insert(self.id, root_neighbours);
+        flow.insert(root, root_neighbours);
 
         flow
     }
@@ -329,15 +329,18 @@ impl FlowNetwork {
     /*
         Used to find the shortest path from v (a neighbour of the root vertex) to vertex in t_out
     */
-    fn bfs(&self, v: Vertex, flow: VertexMap<VertexSet>) -> Option<VertexMap<Vertex>> {
-        let mut path: VertexMap<Vertex> = VertexMap::default();
-        let mut visited = VertexSet::default();
-        let mut queue: VecDeque<Vertex> = VecDeque::new();
+    fn bfs(&self, v: i32, flow: &HashMap<i32, HashSet<i32>>) -> Option<Vec<i32>> {
+        //Keeps a track of the path from endpoint to root
+        //Hashmap stores child -> parent to make it easy to get the right path from sink
+        let mut path: HashMap<i32, i32> = HashMap::default();
+        let mut visited : HashSet<i32> = HashSet::default();
+        let mut queue: VecDeque<i32> = VecDeque::new();
+        let root = self.id as i32;
 
-        visited.insert(self.id);
+        visited.insert(root);
         visited.insert(v);
         queue.push_back(v);
-        path.insert(v, self.id);
+        path.insert(v, root);
 
         while let Some(u) = queue.pop_front() {
             if let Some(u_neighbours) = flow.get(&u) {
@@ -347,8 +350,16 @@ impl FlowNetwork {
                         visited.insert(*w);
                         path.insert(*w, u);
                     }
-                    if self.t_out.contains(w) {
-                        return Some(path);
+                    if self.t_out.contains(&(*w as Vertex)) {
+                        let mut result_path = vec![*w];
+                        let mut current = w;
+                        while *current != root {
+                            let next = path.get(current).unwrap();
+                            result_path.push(*next);
+                            current = next;
+                        }
+                        result_path.reverse();
+                        return Some(result_path);
                     }
                 }
             }
@@ -373,6 +384,16 @@ impl FlowNetwork {
     pub fn augmenting_path(&self, u: &AdmData) {
         let split_edges = self.split_edges_in_network();
         let flow = self.set_edges_direction(split_edges, u);
+
+        for v in flow.get(&(self.id as i32)).unwrap() {
+            match self.bfs(*v, &flow) {
+                None => {}
+                Some(path) => {
+                    //remove duplicate edges
+                    let path_without_duplicates: Vec<_> = path.into_iter().filter(|x| *x >= 0).collect();
+                }
+            }
+        }
     }
 }
 
@@ -710,42 +731,42 @@ mod test_flow_network {
 
         let result = network.split_edges_in_network();
 
-        assert!(!result.contains_key(&((-1i32) as u32)));
+        assert!(!result.contains_key(&(-1i32)));
         assert_eq!(
             *result.get(&1).unwrap(),
-            [-(2i32) as u32, -(6i32) as u32].into_iter().collect()
+            [-2i32, -6i32].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(2i32) as u32)).unwrap(),
+            *result.get(&(-(2i32))).unwrap(),
             [2].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(6i32) as u32)).unwrap(),
+            *result.get(&(-(6i32))).unwrap(),
             [6].into_iter().collect()
         );
         assert_eq!(
             *result.get(&2).unwrap(),
-            [-(3i32) as u32, -(5i32) as u32].into_iter().collect()
+            [-(3i32), -(5i32)].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(5i32) as u32)).unwrap(),
+            *result.get(&(-5i32)).unwrap(),
             [5].into_iter().collect()
         );
         assert_eq!(
             *result.get(&3).unwrap(),
-            [-(4i32) as u32].into_iter().collect()
+            [-4i32].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(3i32) as u32)).unwrap(),
+            *result.get(&(-3i32)).unwrap(),
             [3].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(4i32) as u32)).unwrap(),
+            *result.get(&(-4i32)).unwrap(),
             [4].into_iter().collect()
         );
         assert_eq!(
             *result.get(&6).unwrap(),
-            [-(4i32) as u32].into_iter().collect()
+            [-4i32].into_iter().collect()
         );
     }
 
@@ -757,100 +778,93 @@ mod test_flow_network {
         u_adm_data
             .packing
             .insert(vertex(4), Path::ThreePath(vertex(2), vertex(3), vertex(4)));
-        let mut flow: VertexMap<VertexSet> = VertexMap::default();
-        flow.insert(u, [-(2i32) as u32, -(6i32) as u32].into_iter().collect());
-        flow.insert(-(2i32) as u32, [2].into_iter().collect());
-        flow.insert(-(6i32) as u32, [6].into_iter().collect());
-        flow.insert(2, [-(3i32) as u32, -(5i32) as u32].into_iter().collect());
-        flow.insert(-(5i32) as u32, [5].into_iter().collect());
-        flow.insert(-(3i32) as u32, [3].into_iter().collect());
-        flow.insert(3, [-(4i32) as u32].into_iter().collect());
-        flow.insert(-(4i32) as u32, [4].into_iter().collect());
-        flow.insert(6, [-(4i32) as u32].into_iter().collect());
+        let mut flow: HashMap<i32,HashSet<i32>> = HashMap::default();
+        flow.insert(1, [-2i32, -6i32].into_iter().collect());
+        flow.insert(-2i32, [2].into_iter().collect());
+        flow.insert(-6i32, [6].into_iter().collect());
+        flow.insert(2, [-3i32, -5i32].into_iter().collect());
+        flow.insert(-5i32, [5].into_iter().collect());
+        flow.insert(-3i32, [3].into_iter().collect());
+        flow.insert(3, [-4i32].into_iter().collect());
+        flow.insert(-4i32, [4].into_iter().collect());
+        flow.insert(6, [-4i32].into_iter().collect());
 
         let result = network.set_edges_direction(flow, &u_adm_data);
 
         assert_eq!(
             *result.get(&1).unwrap(),
-            [-(6i32) as u32].into_iter().collect()
+            [-6i32].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(2i32) as u32)).unwrap(),
+            *result.get(&(-2i32)).unwrap(),
             [1].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(6i32) as u32)).unwrap(),
+            *result.get(&(-6i32)).unwrap(),
             [6].into_iter().collect()
         );
         assert_eq!(
             *result.get(&2).unwrap(),
-            [-(2i32) as u32, -(5i32) as u32].into_iter().collect()
+            [-2i32, -5i32].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(5i32) as u32)).unwrap(),
+            *result.get(&(-5i32)).unwrap(),
             [5].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(3i32) as u32)).unwrap(),
+            *result.get(&(-3i32)).unwrap(),
             [2].into_iter().collect()
         );
         assert_eq!(
             *result.get(&3).unwrap(),
-            [-(3i32) as u32].into_iter().collect()
+            [-3i32].into_iter().collect()
         );
         assert_eq!(
-            *result.get(&(-(4i32) as u32)).unwrap(),
+            *result.get(&(-4i32)).unwrap(),
             [3].into_iter().collect()
         );
         assert_eq!(
             *result.get(&6).unwrap(),
-            [-(4i32) as u32].into_iter().collect()
+            [-4i32].into_iter().collect()
         );
         assert_eq!(
             *result.get(&4).unwrap(),
-            [-(4i32) as u32].into_iter().collect()
+            [-4i32].into_iter().collect()
         );
     }
 
     #[test]
     fn bfs_returns_path_if_there_is_a_path_from_root_to_t_out() {
-        let u = vertex(1);
-        let mut network = FlowNetwork::new(u);
-        network.t_out.insert(vertex(7));
-        let mut flow: VertexMap<VertexSet> = VertexMap::default();
-        flow.insert(u, [5].into_iter().collect());
-        flow.insert(5, [6].into_iter().collect());
-        flow.insert(6, [4].into_iter().collect());
-        flow.insert(4, [3].into_iter().collect());
-        flow.insert(3, [2].into_iter().collect());
-        flow.insert(2, [1, 7].into_iter().collect());
+        let mut network = FlowNetwork::new(vertex(1));
+        network.t_out.insert(vertex(10));
+        let mut flow: HashMap<i32,HashSet<i32>> = HashMap::default();
+        flow.insert(1, [2].into_iter().collect());
+        flow.insert(2, [3].into_iter().collect());
+        flow.insert(3, [4].into_iter().collect());
+        flow.insert(4, [5].into_iter().collect());
+        flow.insert(5, [6, 9].into_iter().collect());
+        flow.insert(6, [1].into_iter().collect());
+        flow.insert(9, [8].into_iter().collect());
+        flow.insert(8, [7, 10].into_iter().collect());
+        flow.insert(7, [1].into_iter().collect());
 
-        let result = network.bfs(vertex(5), flow).unwrap();
+        let result = network.bfs(2, &flow).unwrap();
 
-        let mut result_path = vec![vertex(7)];
-        let mut current = vertex(7);
-        while current != u {
-            let next = result.get(&current).unwrap();
-            result_path.push(*next);
-            current = *next;
-        }
-
-        assert_eq!(result_path, vec![7, 2, 3, 4, 6, 5, 1]);
+        assert_eq!(result, vec![1, 2, 3, 4, 5, 9, 8, 10]);
     }
 
     #[test]
-    fn bfs_returns_none_if_there_isnt_a_path_from_root_to_t_out() {
-        let u = vertex(1);
-        let mut network = FlowNetwork::new(u);
-        let mut flow: VertexMap<VertexSet> = VertexMap::default();
-        flow.insert(u, [5].into_iter().collect());
+    fn bfs_returns_none_if_there_is_not_a_path_from_root_to_t_out() {
+        let mut network = FlowNetwork::new(vertex(1));
+        let mut flow: HashMap<i32,HashSet<i32>> = HashMap::default();
+        flow.insert(1, [5].into_iter().collect());
         flow.insert(5, [6].into_iter().collect());
         flow.insert(6, [4].into_iter().collect());
         flow.insert(4, [3].into_iter().collect());
         flow.insert(3, [2].into_iter().collect());
         flow.insert(2, [1].into_iter().collect());
 
-        let result = network.bfs(vertex(5), flow);
+        let result = network.bfs(5, &flow);
 
         assert!(result.is_none());
     }
