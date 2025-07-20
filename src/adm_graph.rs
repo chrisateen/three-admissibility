@@ -213,11 +213,9 @@ impl<'a> AdmGraph<'a> {
        Find an augmenting path to see if packing of u can be extended
     */
     fn stage_2_update(&mut self, u: &mut AdmData, targets: &VertexSet) {
-        let t1: VertexSet = u.t1.intersection(&self.l).cloned().collect();
-        let t2_t3: VertexSet = targets.difference(&t1).cloned().collect();
-
         let mut flow_network = FlowNetwork::new(u.id);
         flow_network.construct_flow_network(self, u, targets);
+        flow_network.augmenting_path(u);
     }
 
     /*

@@ -220,6 +220,7 @@ impl FlowNetwork {
 
     /*
         Spilt edges in network to prepare for augmenting path
+        create a duplicate vertex which a negation of the original vertex
     */
     fn split_edges_in_network(&self) -> HashMap<i32, HashSet<i32>> {
         let mut edges = HashMap::default();
@@ -265,65 +266,62 @@ impl FlowNetwork {
 
             match path {
                 Path::TwoPath(s1, t2) => {
-                    let negative_s1 = -(*s1 as i32);
-                    let negative_t2 = -(*t2 as i32);
+                    let (s1, t2) = (*s1 as i32, *t2 as i32);
+                    let (neg_s1, neg_t2) = (-s1, -t2);
 
                     //reverse root -> -s1 -> s1 -> -t2 -> t2
                     // to t2 -> -t2 -> s1 -> -s1 -> root
-                    root_neighbours.remove(&negative_s1);
+                    root_neighbours.remove(&neg_s1);
 
-                    let negative_s1_neighbours = flow.get_mut(&negative_s1).unwrap();
+                    let negative_s1_neighbours = flow.get_mut(&neg_s1).unwrap();
                     negative_s1_neighbours.insert(root);
-                    negative_s1_neighbours.remove(&(*s1 as i32));
+                    negative_s1_neighbours.remove(&s1);
 
-                    let s1_neighbours = flow.get_mut(&(*s1 as i32)).unwrap();
-                    s1_neighbours.insert(negative_s1);
-                    s1_neighbours.remove(&negative_t2);
+                    let s1_neighbours = flow.get_mut(&s1).unwrap();
+                    s1_neighbours.insert(neg_s1);
+                    s1_neighbours.remove(&neg_t2);
 
-                    let negative_t2_neighbours = flow.get_mut(&negative_t2).unwrap();
-                    negative_t2_neighbours.insert(*s1 as i32);
-                    negative_t2_neighbours.remove(&(*t2 as i32));
+                    let negative_t2_neighbours = flow.get_mut(&neg_t2).unwrap();
+                    negative_t2_neighbours.insert(s1);
+                    negative_t2_neighbours.remove(&t2);
 
-                    let t2_neighbours = flow.entry(*t2 as i32).or_default();
-                    t2_neighbours.insert(negative_t2);
+                    let t2_neighbours = flow.entry(t2).or_default();
+                    t2_neighbours.insert(neg_t2);
                 }
                 Path::ThreePath(s1, s2, t3) => {
-                    let negative_s1 = -(*s1 as i32);
-                    let negative_s2 = -(*s2 as i32);
-                    let negative_t3 = -(*t3 as i32);
+                    let (s1, s2, t3) = (*s1 as i32, *s2 as i32, *t3 as i32);
+                    let (neg_s1, neg_s2, neg_t3) = (-s1, -s2, -t3);
 
                     //reverse root -> -s1 -> s1 -> -s2 -> s2 -> -t3 -> t3
                     // to t3 -> -t3 -> s2 -> -s2 -> s1 -> -s1 -> root
-                    root_neighbours.remove(&negative_s1);
+                    root_neighbours.remove(&neg_s1);
 
-                    let negative_s1_neighbours = flow.get_mut(&negative_s1).unwrap();
+                    let negative_s1_neighbours = flow.get_mut(&neg_s1).unwrap();
                     negative_s1_neighbours.insert(root);
-                    negative_s1_neighbours.remove(&(*s1 as i32));
+                    negative_s1_neighbours.remove(&s1);
 
-                    let s1_neighbours = flow.get_mut(&(*s1 as i32)).unwrap();
-                    s1_neighbours.insert(negative_s1);
-                    s1_neighbours.remove(&negative_s2);
+                    let s1_neighbours = flow.get_mut(&s1).unwrap();
+                    s1_neighbours.insert(neg_s1);
+                    s1_neighbours.remove(&neg_s2);
 
-                    let negative_s2_neighbours = flow.get_mut(&negative_s2).unwrap();
-                    negative_s2_neighbours.insert(*s1 as i32);
-                    negative_s2_neighbours.remove(&(*s2 as i32));
+                    let negative_s2_neighbours = flow.get_mut(&neg_s2).unwrap();
+                    negative_s2_neighbours.insert(s1);
+                    negative_s2_neighbours.remove(&s2);
 
-                    let s2_neighbours = flow.get_mut(&(*s2 as i32)).unwrap();
-                    s2_neighbours.insert(negative_s2);
-                    s2_neighbours.remove(&negative_t3);
+                    let s2_neighbours = flow.get_mut(&s2).unwrap();
+                    s2_neighbours.insert(neg_s2);
+                    s2_neighbours.remove(&neg_t3);
 
-                    let negative_t3_neighbours = flow.get_mut(&negative_t3).unwrap();
-                    negative_t3_neighbours.insert(*s2 as i32);
-                    negative_t3_neighbours.remove(&(*t3 as i32));
+                    let negative_t3_neighbours = flow.get_mut(&neg_t3).unwrap();
+                    negative_t3_neighbours.insert(s2);
+                    negative_t3_neighbours.remove(&t3);
 
-                    let t3_neighbours = flow.entry(*t3 as i32).or_default();
-                    t3_neighbours.insert(negative_t3);
+                    let t3_neighbours = flow.entry(t3).or_default();
+                    t3_neighbours.insert(neg_t3);
                 }
             }
         }
-
         flow.insert(root, root_neighbours);
-
         flow
     }
 
@@ -368,6 +366,72 @@ impl FlowNetwork {
         None
     }
 
+    /*
+        Use bfs and the augmenting path found to figure out the edges for the new packing
+    */
+    fn get_new_packing_edges(
+        &self,
+        u: &mut AdmData,
+        new_path: VertexSet,
+    ) -> (VertexMap<Vertex>, VertexSet) {
+        let vertices_in_pack: VertexSet =
+            self.s1.union(&self.s2).chain(&self.t_in).cloned().collect();
+        let vertices_to_modify: VertexSet = new_path
+            .symmetric_difference(&vertices_in_pack)
+            .cloned()
+            .collect();
+        let mut edges: VertexMap<Vertex> = HashMap::default();
+        let mut visited: VertexSet = VertexSet::default();
+        let mut queue: VecDeque<Vertex> = VecDeque::new();
+        let mut t = VertexSet::default();
+
+        visited.insert(self.id);
+        queue.push_back(self.id);
+
+        while let Some(w) = queue.pop_front() {
+            if let Some(w_neighbours) = self.edges.get(&w) {
+                for x in w_neighbours {
+                    if !visited.contains(x) {
+                        queue.push_back(*x);
+                        visited.insert(*x);
+                        if u.is_v_in_pack(x) {
+                            //if a vertex is in original packing
+                            //but is in the set of vertices to modify
+                            //we don't add the edge as it's not a vertex that
+                            //was part of the augmenting path
+                            if !vertices_to_modify.contains(x) {
+                                edges.insert(*x, w);
+                                if self.t_in.contains(&w) || self.t_out.contains(&w) {
+                                    t.insert(w);
+                                }
+                            }
+                        } else if vertices_to_modify.contains(x) {
+                            //if a vertex that is not in original packing
+                            //but in the augmenting path we need add it
+                            edges.insert(*x, w);
+                            if self.t_in.contains(&w) || self.t_out.contains(&w) {
+                                t.insert(w);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        (edges, t)
+    }
+
+    /*
+        Update packing based on results of augmenting path
+    */
+    fn update_packing(&self, u: &mut AdmData, new_edges: VertexMap<Vertex>, new_t: VertexSet) {
+        u.delete_packing();
+        for v in new_t.iter() {
+            let v_neighbours = new_edges.get(v).unwrap();
+           
+        }
+    }
+
     pub fn construct_flow_network(
         &mut self,
         adm_graph: &AdmGraph,
@@ -382,7 +446,7 @@ impl FlowNetwork {
         self.add_extra_targets(&adm_graph.adm_data, targets, &adm_graph.vias, &adm_graph.l);
     }
 
-    pub fn augmenting_path(&self, u: &AdmData) {
+    pub fn augmenting_path(&self, u: &mut AdmData) {
         let split_edges = self.split_edges_in_network();
         let flow = self.set_edges_direction(split_edges, u);
 
@@ -391,8 +455,14 @@ impl FlowNetwork {
                 None => {}
                 Some(path) => {
                     //remove duplicate edges
-                    let path_without_duplicates: Vec<_> =
-                        path.into_iter().filter(|x| *x >= 0).collect();
+                    let path_without_duplicates: VertexSet = path
+                        .into_iter()
+                        .filter(|x| *x >= 0)
+                        .map(|x| x as Vertex)
+                        .collect();
+                    let (new_edges, new_t) = self.get_new_packing_edges(u,path_without_duplicates);
+                    self.update_packing(u, new_edges, new_t);
+                    return;
                 }
             }
         }
