@@ -33,18 +33,42 @@ impl AdmData {
     }
 
     pub fn debug_check_consistency(&self, adm_graph:&AdmGraph) {
+        let mut all_good = true;
         for path in self.packing.values() {
             match path {
                 Path::TwoPath(s1, t2) => {
-                    debug_assert!(adm_graph.r.contains(s1));
-                    debug_assert!(adm_graph.l.contains(t2));
+                    all_good &= adm_graph.r.contains(s1);
+                    all_good &= adm_graph.l.contains(t2);
                 },
                 Path::ThreePath(s1, s2, t3) => {
-                    debug_assert!(adm_graph.r.contains(s1));
-                    debug_assert!(adm_graph.r.contains(s2));
-                    debug_assert!(adm_graph.l.contains(t3));
+                    all_good &= adm_graph.r.contains(s1);
+                    all_good &= adm_graph.r.contains(s2);
+                    all_good &= adm_graph.l.contains(t3);
                 }
             }
+        }
+
+        if !all_good {
+            println!("Inconsistency in packing rooted at {}", self.id);
+            println!("Left = {:?}", adm_graph.l);
+            println!("Right = {:?}", adm_graph.r);
+            for path in self.packing.values() {
+                match path {
+                    Path::TwoPath(s1, t2) => {
+                        println!("Path {}-{}-{}", self.id, s1, t2);
+                        println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
+                        println!("   vertex {} is in L: {}", t2, adm_graph.l.contains(t2));
+                    },
+                    Path::ThreePath(s1, s2, t3) => {
+                        println!("Path {}-{}-{}-{}", self.id, s1, s2, t3);
+                        println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
+                        println!("   vertex {} is in R: {}", s2, adm_graph.r.contains(s2));
+                        println!("   vertex {} is in L: {}", t3, adm_graph.l.contains(t3));
+                    }
+                }
+            }
+
+            panic!();
         }
     }
 

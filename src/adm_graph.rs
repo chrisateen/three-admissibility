@@ -40,6 +40,7 @@ impl<'a> AdmGraph<'a> {
     */
     pub fn initialise_candidates(&mut self) {
         for (u, adm_data) in &self.adm_data {
+            adm_data.debug_check_consistency(self);
             if adm_data.t1.len() <= self.p {
                 self.candidates.insert(*u);
             }
@@ -52,6 +53,7 @@ impl<'a> AdmGraph<'a> {
     fn compute_vias(&mut self, v: &mut AdmData) {
         v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
         //TODO: Can we remove all vertices from v's T1 that are not in L?
+        v.n_in_r.extend(v.t1.iter().filter(|x|self.r.contains(x)).cloned());
         v.t1.retain(|x| self.l.contains(x));
 
         for u in v.n_in_r.clone() {
@@ -119,8 +121,12 @@ impl<'a> AdmGraph<'a> {
         if !u.is_v_in_pack(&v) {
             return;
         }
+        println!("v = {v}");
+        println!("u = {}", u.id);
+        println!("Packing = {:?}", u.packing);
 
         let path = u.remove_v_from_packing(&v);
+        println!("Removed path {:?}", path);
         u.debug_check_consistency(self); // DEBUG
 
         let w = match path {
@@ -139,6 +145,7 @@ impl<'a> AdmGraph<'a> {
                 continue;
             }
             if !u.is_v_in_pack(x) {
+                debug_assert!(self.l.contains(x));
                 u.add_t2_to_packing(x, &w);
                 return;
             }
@@ -158,8 +165,10 @@ impl<'a> AdmGraph<'a> {
                     //Check if there is a shorter path to y (i.e u,x,y)
                     // if so add the shorter path instead
                     if self.graph.adjacent(&u.id, x) {
-                        u.add_t2_to_packing(y, x); // < ------- !!!!
+                        debug_assert!(self.l.contains(y));
+                        u.add_t2_to_packing(y, x); 
                     } else {
+                        debug_assert!(self.l.contains(y));
                         u.add_t3_to_packing(y, &w, x);
                     }
                     return;
@@ -194,6 +203,7 @@ impl<'a> AdmGraph<'a> {
 
                 //first check if w,y is a path
                 if w_adm_data.t1.contains(y) {
+                    debug_assert!(self.l.contains(y));
                     u.add_t2_to_packing(y, &w);
                     return;
                 }
@@ -211,8 +221,10 @@ impl<'a> AdmGraph<'a> {
 
                     //first check if there is a shorter path x,y
                     if self.graph.adjacent(&u.id, x) {
+                        debug_assert!(self.l.contains(y));
                         u.add_t2_to_packing(y, x);
                     } else {
+                        debug_assert!(self.l.contains(y));
                         u.add_t3_to_packing(y, x, &w);
                     }
                 }
@@ -238,6 +250,9 @@ impl<'a> AdmGraph<'a> {
         let t = self.collect_targets(&v_adm_data);
         self.compute_vias(&mut v_adm_data);
         self.adm_data.insert(*v, v_adm_data);
+
+        debug_assert!(!self.l.contains(v));
+        debug_assert!(self.r.contains(v));
 
         for u in t {
             debug_assert!(self.l.contains(&u));
