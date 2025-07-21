@@ -1,5 +1,7 @@
 use graphbench::graph::{Vertex, VertexMap, VertexSet};
 
+use crate::adm_graph::AdmGraph;
+
 #[derive(Debug, PartialEq)]
 pub enum Path {
     TwoPath(Vertex, Vertex),           //t1_r. t2_l
@@ -29,6 +31,23 @@ impl AdmData {
             packing: VertexMap::default(),
         }
     }
+
+    pub fn debug_check_consistency(&self, adm_graph:&AdmGraph) {
+        for path in self.packing.values() {
+            match path {
+                Path::TwoPath(s1, t2) => {
+                    debug_assert!(adm_graph.r.contains(s1));
+                    debug_assert!(adm_graph.l.contains(t2));
+                },
+                Path::ThreePath(s1, s2, t3) => {
+                    debug_assert!(adm_graph.r.contains(s1));
+                    debug_assert!(adm_graph.r.contains(s2));
+                    debug_assert!(adm_graph.l.contains(t3));
+                }
+            }
+        }
+    }
+
 
     pub fn add_t2_to_packing(&mut self, t2: &Vertex, t1: &Vertex) {
         self.packing.insert(*t2, Path::TwoPath(*t1, *t2));

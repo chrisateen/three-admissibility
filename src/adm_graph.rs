@@ -51,13 +51,18 @@ impl<'a> AdmGraph<'a> {
     */
     fn compute_vias(&mut self, v: &mut AdmData) {
         v.delete_packing(); //clear 3-packing of v as we now want to store a 2-packing for v
+        //TODO: Can we remove all vertices from v's T1 that are not in L?
+        v.t1.retain(|x| self.l.contains(x));
 
         for u in v.n_in_r.clone() {
             debug_assert!(self.r.contains(&u));
+            debug_assert!(!v.t1.contains(&u));
+
             let u_adm_data = self.adm_data.get(&u).unwrap();
 
             for w in u_adm_data.t1.difference(&self.l) {
-                if !v.is_v_in_pack(w) {
+                if !(v.is_v_in_pack(w) || v.is_v_in_pack(&u)) {
+                    debug_assert!(!v.t1.contains(&u));
                     v.add_t2_to_packing(w, &u);
                 }
                 self.vias.add_a_via(v.id, *w, u);
@@ -239,6 +244,7 @@ impl<'a> AdmGraph<'a> {
             }
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
+            u_adm_data.debug_check_consistency(self);
 
             let targets_u: VertexSet;
 
