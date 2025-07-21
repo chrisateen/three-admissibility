@@ -195,35 +195,36 @@ impl FlowNetwork {
     fn add_extra_targets(
         &mut self,
         adm_data: &VertexMap<AdmData>,
-        u: &AdmData,        
+        u_data: &AdmData,        
         targets: &VertexSet,
         vias: &Vias,
         l: &VertexSet,
     ) {
         let s1_s2: VertexSet = self.s1.union(&self.s2).cloned().collect();
+        let u = u_data.id;
 
-        'outer: for v in &s1_s2 {
-            let v_adm_data = adm_data.get(v).unwrap();
-            for w in v_adm_data.t1.intersection(l) { // Left neighbours w of v 
-                if *w == u.id ||  u.t1.contains(w)  {
+        'outer: for w in &s1_s2 {
+            let w_data = adm_data.get(w).unwrap();
+            for y in w_data.t1.intersection(l) { // Left neighbours w of v 
+                if *y == u ||  u_data.t1.contains(y)  {
                     continue // w is equal to u or is a neighbour of root u
                 }
 
-                if !self.t_in.contains(w) {
+                if !self.t_in.contains(y) {
                     //adds edge s2 -> target outside packing or s1 -> target outside packing
-                    self.arcs.get_mut(v).unwrap().insert(*w);
-                    debug_assert_ne!(*w, u.id);
-                    self.t_out.insert(*w);
+                    self.arcs.get_mut(w).unwrap().insert(*y);
+                    debug_assert_ne!(*y, u);
+                    self.t_out.insert(*y);
                     continue 'outer;
                 }
             }
 
-            if self.s2.contains(v) {
+            if self.s2.contains(w) {
                 continue 'outer;
             }
 
             for w in targets.difference(&self.t_in) {
-                let v_w_vias = vias.get_vias(*v, *w);
+                let v_w_vias = vias.get_vias(*w, *w);
                 if v_w_vias.is_none() {
                     continue;
                 }
@@ -232,9 +233,9 @@ impl FlowNetwork {
                     None => {}
                     Some(x) => {
                         //adds edge s1 (v) -> via (x)
-                        self.arcs.get_mut(v).unwrap().insert(*x);
+                        self.arcs.get_mut(w).unwrap().insert(*x);
                         self.arcs.entry(*x).or_default().insert(*w);
-                        debug_assert_ne!(*w, u.id);
+                        debug_assert_ne!(*w, u_data.id);
                         self.t_out.insert(*w);
                         continue 'outer;
                     }
@@ -455,12 +456,12 @@ impl FlowNetwork {
                 // Found a path of length 2: x y
                 // debug_assert!()
                 println!("Adding path {}-{}-{}", u.id, x, y);
-                u.add_t2_to_packing(&y, &x);
+                u.add_t2_to_packing(&x, &y);
             } else if aux.degree(&y) == 1 {
                 // Path of length 3: x y z
                 let z = aux.neighbours(&y).next().unwrap();
                 println!("Adding path {}-{}-{}-{}", u.id, x, y, z);
-                u.add_t3_to_packing(z, &x, &y);
+                u.add_t3_to_packing(&x, &y, z);
             } else {
                 unreachable!("This should not happen");
             }

@@ -1,4 +1,4 @@
-use graphbench::graph::{Vertex, VertexMap, VertexSet};
+use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 
 use crate::adm_graph::AdmGraph;
 
@@ -33,47 +33,69 @@ impl AdmData {
     }
 
     pub fn debug_check_consistency(&self, adm_graph:&AdmGraph) {
-        let mut all_good = true;
-        for path in self.packing.values() {
-            match path {
-                Path::TwoPath(s1, t2) => {
-                    all_good &= adm_graph.r.contains(s1);
-                    all_good &= adm_graph.l.contains(t2);
-                },
-                Path::ThreePath(s1, s2, t3) => {
-                    all_good &= adm_graph.r.contains(s1);
-                    all_good &= adm_graph.r.contains(s2);
-                    all_good &= adm_graph.l.contains(t3);
-                }
-            }
+        let neighbours:VertexSet = adm_graph.graph.neighbours(&self.id).cloned().collect();
+        let left_neighbours:VertexSet = neighbours.iter().filter(|x| adm_graph.l.contains(x)).cloned().collect();
+        let right_neighbours:VertexSet = neighbours.iter().filter(|x| adm_graph.r.contains(x)).cloned().collect();
+
+        // Left neighbours of this vertex should ALL be contained in t1
+        debug_assert_eq!(left_neighbours.difference(&self.t1).count(), 0 );
+
+        for x in self.t1.iter() {
+            debug_assert!(neighbours.contains(x));
+        }
+        for x in self.n_in_r.iter() {
+            debug_assert!(neighbours.contains(x));
         }
 
-        if !all_good {
-            println!("Inconsistency in packing rooted at {}", self.id);
-            println!("Left = {:?}", adm_graph.l);
-            println!("Right = {:?}", adm_graph.r);
+        if adm_graph.l.contains(&self.id) {
+            // This is a 3-packing
+            // Ensure that vertices of packign are on correct sides
+
+            let mut all_good = true;
             for path in self.packing.values() {
                 match path {
                     Path::TwoPath(s1, t2) => {
-                        println!("Path {}-{}-{}", self.id, s1, t2);
-                        println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
-                        println!("   vertex {} is in L: {}", t2, adm_graph.l.contains(t2));
+                        all_good &= adm_graph.r.contains(s1);
+                        all_good &= adm_graph.l.contains(t2);
                     },
                     Path::ThreePath(s1, s2, t3) => {
-                        println!("Path {}-{}-{}-{}", self.id, s1, s2, t3);
-                        println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
-                        println!("   vertex {} is in R: {}", s2, adm_graph.r.contains(s2));
-                        println!("   vertex {} is in L: {}", t3, adm_graph.l.contains(t3));
+                        all_good &= adm_graph.r.contains(s1);
+                        all_good &= adm_graph.r.contains(s2);
+                        all_good &= adm_graph.l.contains(t3);
                     }
                 }
             }
 
-            panic!();
+            if !all_good {
+                println!("Inconsistency in packing rooted at {}", self.id);
+                println!("Left = {:?}", adm_graph.l);
+                println!("Right = {:?}", adm_graph.r);
+                for path in self.packing.values() {
+                    match path {
+                        Path::TwoPath(s1, t2) => {
+                            println!("Path {}-{}-{}", self.id, s1, t2);
+                            println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
+                            println!("   vertex {} is in L: {}", t2, adm_graph.l.contains(t2));
+                        },
+                        Path::ThreePath(s1, s2, t3) => {
+                            println!("Path {}-{}-{}-{}", self.id, s1, s2, t3);
+                            println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
+                            println!("   vertex {} is in R: {}", s2, adm_graph.r.contains(s2));
+                            println!("   vertex {} is in L: {}", t3, adm_graph.l.contains(t3));
+                        }
+                    }
+                }
+
+                panic!();
+            }
+        } else {
+            debug_assert_eq!(self.t3.len(), 0); // There should be no T3 vertices
+
         }
     }
 
 
-    pub fn add_t2_to_packing(&mut self, t2: &Vertex, t1: &Vertex) {
+    pub fn add_t2_to_packing(&mut self, t1: &Vertex, t2: &Vertex) {
         self.packing.insert(*t2, Path::TwoPath(*t1, *t2));
 
         debug_assert_ne!(*t1, self.id);
@@ -87,7 +109,7 @@ impl AdmData {
         self.t2.insert(*t2);
     }
 
-    pub fn add_t3_to_packing(&mut self, t3: &Vertex, t1: &Vertex, t2: &Vertex) {
+    pub fn add_t3_to_packing(&mut self, t1: &Vertex, t2: &Vertex, t3: &Vertex) {
         self.packing.insert(*t3, Path::ThreePath(*t1, *t2, *t3));
 
         debug_assert_ne!(*t1, self.id);
@@ -160,7 +182,7 @@ mod tests {
     fn add_t2_to_packing_updates_correctly() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
 
-        adm.add_t2_to_packing(&vertex(2), &vertex(3));
+        adm.add_t2_to_packing(&vertex(3), &vertex(2));
 
         assert_eq!(adm.packing.len(), 1);
         assert!(adm.packing.contains_key(&vertex(2)));
@@ -176,7 +198,7 @@ mod tests {
     fn add_t3_to_packing_updates_correctly() {
         let mut adm = AdmData::new(vertex(1), VertexSet::default());
 
-        adm.add_t3_to_packing(&vertex(4), &vertex(5), &vertex(6));
+        adm.add_t3_to_packing(&vertex(5), &vertex(6), &vertex(4));
 
         assert_eq!(adm.packing.len(), 1);
         assert!(adm.packing.contains_key(&vertex(4)));

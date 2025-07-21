@@ -52,6 +52,8 @@ fn compute_ordering(p: usize, graph: &EditGraph, save_order: bool) -> Option<Vec
     adm_graph.initialise_candidates();
 
     let mut next_vertex = adm_graph.get_next_v_in_ordering();
+    adm_graph.debug_check_consistency();
+        
     let mut order = Vec::default();
     while next_vertex.is_some() && !adm_graph.is_all_vertices_in_r_or_candidates() {
         let v = next_vertex.unwrap();
@@ -59,6 +61,7 @@ fn compute_ordering(p: usize, graph: &EditGraph, save_order: bool) -> Option<Vec
             order.push(v);
         }
         next_vertex = adm_graph.get_next_v_in_ordering();
+        adm_graph.debug_check_consistency();
     }
     if save_order {
         order.extend(next_vertex.iter()); // Adds vertex if not None
