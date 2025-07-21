@@ -40,7 +40,6 @@ impl<'a> AdmGraph<'a> {
     */
     pub fn initialise_candidates(&mut self) {
         for (u, adm_data) in &self.adm_data {
-            adm_data.debug_check_consistency(self);
             if adm_data.t1.len() <= self.p {
                 self.candidates.insert(*u);
             }
@@ -85,27 +84,33 @@ impl<'a> AdmGraph<'a> {
                 debug_assert!(self.l.contains(y));
                 debug_assert!(v_data.t1.contains(y));
                 debug_assert!(!u_data.t1.contains(y));
+                debug_assert!(self.graph.adjacent(&u, &v));
                 u_data.add_t2_to_packing(&v, y);
                 break                
             }
         }
 
         // Compute 2-packing for v
+        println!("Finding maximal 2-packing for targets {:?}", v_targets);
         for &y in v_targets {
             if self.graph.adjacent(&y, &v) {
-                debug_assert!(v_data.t1.contains(&y));
+                debug_assert!(v_data.t1.contains(&y)); 
+                continue
             }
 
             if let Some(vias) = self.vias.get_vias(v, y) {
-                let x = vias.iter().next().unwrap();
-                if v_data.is_v_in_pack(&x) {
+                for x in vias.iter() {
+                    if v_data.is_v_in_pack(&x) {
+                        continue
+                    }
+                    debug_assert!(self.graph.adjacent(&v, &x));
                     v_data.add_t2_to_packing(&x, &y);
                     break;
                 }
-            }
+            } 
         }
         println!("2-packing for v={}: T1 = {:?}, T2 = {:?}", v, v_data.t1, v_data.packing);
-        println!("  actual neighbours: {:?}", self.graph.neighbours(&v).collect::<Vec<&Vertex>>())
+        println!("  actual left neighbours: {:?}", self.graph.neighbours(&v).filter(|x| self.l.contains(x)).collect::<Vec<&Vertex>>())
     }
 
     /*
@@ -116,6 +121,10 @@ impl<'a> AdmGraph<'a> {
         let mut targets: VertexSet = v_data.t1.intersection(&self.l).cloned().collect();
         let t1_t2: VertexSet = v_data.t1.union(&v_data.t2).cloned().collect();
 
+        println!("Collect targets for {v}:");
+        println!("  T1 = {:?}", targets);
+        println!("  Packing = {:?}", v_data.packing);
+
         for w in t1_t2.intersection(&self.r) {
             if *w == v {
                 continue; // We already added t1 to t
@@ -125,6 +134,7 @@ impl<'a> AdmGraph<'a> {
 
             // Add left neigbhours of w to targets
             targets.extend(w_data.t1.intersection(&self.l));
+            println!("  Adding left neighbours of {}: {:?}", w, w_data.t1.intersection(&self.l).cloned().collect::<VertexSet>() );
 
             // The remaining code is only for vertices at distance 1 from v
             if !self.graph.adjacent(w, &v) {
@@ -133,11 +143,14 @@ impl<'a> AdmGraph<'a> {
 
             // To find the targets at distance three, we use the 2-packing stored for
             // w.
+            println!("  Checking two-packing for {}:", w);
             for x in w_data.t1.intersection(&self.r) {
                 if *x == v {
                     continue;
                 }
+
                 let x_data = self.adm_data.get(x).unwrap();
+                println!("  Adding left neighbours of {}: {:?}", x, x_data.t1.intersection(&self.l).cloned().collect::<VertexSet>() );                
                 targets.extend(x_data.t1.intersection(&self.l));
             }
         }
@@ -147,17 +160,18 @@ impl<'a> AdmGraph<'a> {
     /*
         Simple update of a packing
     */
-    fn simple_update(&mut self, u: &mut AdmData, v: Vertex) {
-        if !u.is_v_in_pack(&v) {
+    fn simple_update(&mut self, u_data: &mut AdmData, v: Vertex) {
+        if !u_data.is_v_in_pack(&v) {
             return;
         }
-        println!("v = {v}");
-        println!("u = {}", u.id);
-        println!("Packing = {:?}", u.packing);
+        let u = u_data.id;
+        println!("u = {} (v = {})", u, v);
+        println!("T1 = {:?} ", u_data.t1.intersection(&self.l).cloned().collect::<VertexSet>());
+        println!("Packing = {:?}", u_data.packing);
 
-        let path = u.remove_v_from_packing(&v);
+        let path = u_data.remove_v_from_packing(&v);
         println!("Removed path {:?}", path);
-        u.debug_check_consistency(self); // DEBUG
+        u_data.debug_check_consistency(self); // DEBUG
 
         let w = match path {
             Some(path) => match path {
@@ -166,40 +180,47 @@ impl<'a> AdmGraph<'a> {
             },
             None => v,
         };
-        let w_adm_data = self.adm_data.get(&w).unwrap();
+        let w_data = self.adm_data.get(&w).unwrap();
         debug_assert!(self.r.contains(&w));
 
         //check if we can add a path of length 2
-        for x in w_adm_data.t1.intersection(&self.l) {
-            if *x == u.id {
+        println!("  Attempting to add path of length 2 through {:?}", w_data.t1.intersection(&self.l).cloned().collect::<VertexSet>());
+        for x in w_data.t1.intersection(&self.l) {
+            if *x == u {
                 continue;
             }
-            if !u.is_v_in_pack(x) {
+            if !u_data.is_v_in_pack(x) {
                 debug_assert!(self.l.contains(x));
-                u.add_t2_to_packing(&w, x);
+                u_data.add_t2_to_packing(&w, x);
                 return;
             }
         }
 
         // check if we can add a path of length 3
-        for x in w_adm_data.t1.intersection(&self.r) {
-            if u.t1.contains(x) | u.t2.contains(x) | u.t3.contains(x) | (u.id == v) {
+        println!("  Attempting to add path of length 3 through {:?}", w_data.t1.intersection(&self.r).cloned().collect::<VertexSet>());
+        for x in w_data.t1.intersection(&self.r) {
+            if u_data.is_v_in_pack(x) || (u == v) {
                 continue;
             }
             let x_adm_data = self.adm_data.get(x).unwrap();
             for y in x_adm_data.t1.intersection(&self.l) {
-                if *y == u.id {
+                if *y == u {
                     continue;
                 }
-                if !u.is_v_in_pack(y) {
+                if !u_data.is_v_in_pack(y) {
                     //Check if there is a shorter path to y (i.e u,x,y)
                     // if so add the shorter path instead
-                    if self.graph.adjacent(&u.id, x) {
+                    if self.graph.adjacent(&u, x) {
+                        debug_assert!(self.r.contains(x));
                         debug_assert!(self.l.contains(y));
-                        u.add_t2_to_packing(x, y); 
+                        debug_assert!(self.graph.adjacent(&u, &x));
+                        u_data.add_t2_to_packing(x, y); 
                     } else {
+                        debug_assert!(self.r.contains(&w));
+                        debug_assert!(self.r.contains(x));
                         debug_assert!(self.l.contains(y));
-                        u.add_t3_to_packing(y, &w, x);
+                        debug_assert!(self.graph.adjacent(&u, &w));
+                        u_data.add_t3_to_packing(&w, x, y);
                     }
                     return;
                 }
@@ -210,10 +231,10 @@ impl<'a> AdmGraph<'a> {
     /*
        Try to see if a disjoint path can be added to the packing of u
     */
-    fn stage_1_update(&mut self, u_data: &mut AdmData, targets: &VertexSet) {
+    fn stage_1_update(&mut self, u_data: &mut AdmData, u_targets: &VertexSet) {
         let u = u_data.id;
         let t1: VertexSet = u_data.t1.intersection(&self.l).cloned().collect();
-        let t3_and_t2: VertexSet = targets.difference(&t1).cloned().collect();
+        let t_23: VertexSet = u_targets.difference(&t1).cloned().collect();
 
         for w in u_data.n_in_r.clone() {
             debug_assert!(self.r.contains(&w));
@@ -221,22 +242,25 @@ impl<'a> AdmGraph<'a> {
                 continue;
             }
 
-            for y in &t3_and_t2 {
+            for y in &t_23 {
                 debug_assert!(self.l.contains(y));
                 if *y == u || u_data.is_v_in_pack(y){
                     continue;
                 }
 
-                let w_adm_data = self.adm_data.get(&w).unwrap();
+                let w_data = self.adm_data.get(&w).unwrap();
 
-                //first check if w,y is a path
-                if w_adm_data.t1.contains(y) {
+                // First check if uwy is a path
+                if w_data.t1.contains(y) {
                     debug_assert!(self.l.contains(y));
-                    u_data.add_t2_to_packing(y, &w);
-                    return;
+                    debug_assert!(self.graph.adjacent(&u, &w));
+                    debug_assert!(self.graph.adjacent(&w, &y));
+                    u_data.add_t2_to_packing(&w, y);
+                    return
                 }
 
-                //if w,y is not a path check vias between w and y
+                // If uwy is not a path check vias between w and y
+                // to see whether a path uwxy exists.
                 let x_vias = self.vias.get_vias(w, *y);
                 if x_vias.is_none() {
                     continue;
@@ -247,14 +271,21 @@ impl<'a> AdmGraph<'a> {
                         continue;
                     }
 
-                    //first check if there is a shorter path x,y
+                    // First check if there is a shorter path uxy to reach y
                     if self.graph.adjacent(&u, x) {
                         debug_assert!(self.l.contains(y));
-                        u_data.add_t2_to_packing(y, x);
+                        debug_assert!(self.graph.adjacent(&u, &x));
+                        debug_assert!(self.graph.adjacent(&x, &y));
+                        u_data.add_t2_to_packing(x, y);
                     } else {
                         debug_assert!(self.l.contains(y));
-                        u_data.add_t3_to_packing(y, x, &w);
+                        debug_assert!(self.graph.adjacent(&u, &w));
+                        debug_assert!(self.graph.adjacent(&w, x));
+                        debug_assert!(self.graph.adjacent(x, y));
+                        u_data.add_t3_to_packing(&w, x, y);
                     }
+
+                    // In either case, we extended the size of the packing by one
                     return
                 }
             }
@@ -284,20 +315,26 @@ impl<'a> AdmGraph<'a> {
         debug_assert!(!self.l.contains(v));
         debug_assert!(self.r.contains(v));
 
+        println!("Updating 3-packing for targets {:?}", t);
         for u in t {
             debug_assert!(self.l.contains(&u));
+
             if self.candidates.contains(&u) {
+                // TEMP: Update packings in candidates as well.
+                let mut u_adm_data = self.adm_data.remove(&u).unwrap();
+                self.simple_update(&mut u_adm_data, *v);   
+                self.adm_data.insert(u, u_adm_data);             
                 continue;
             }
+
             let mut u_adm_data = self.adm_data.remove(&u).unwrap();
             self.simple_update(&mut u_adm_data, *v);
             u_adm_data.debug_check_consistency(self);
 
-            let targets_u: VertexSet;
 
             //check if a disjoint path can be added to packing of u
             if u_adm_data.size_of_packing() <= self.p {
-                targets_u = self.collect_targets(&u_adm_data);
+                let targets_u = self.collect_targets(&u_adm_data);
                 self.stage_1_update(&mut u_adm_data, &targets_u);
 
                 //If size of packing is still p after simple update

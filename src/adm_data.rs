@@ -47,7 +47,7 @@ impl AdmData {
             debug_assert!(neighbours.contains(x));
         }
 
-        if adm_graph.l.contains(&self.id) {
+        if adm_graph.l.contains(&self.id) && !adm_graph.candidates.contains(&self.id) {
             // This is a 3-packing
             // Ensure that vertices of packign are on correct sides
 
@@ -69,6 +69,7 @@ impl AdmData {
             if !all_good {
                 println!("Inconsistency in packing rooted at {}", self.id);
                 println!("Left = {:?}", adm_graph.l);
+                println!("Candidates = {:?}", adm_graph.candidates);
                 println!("Right = {:?}", adm_graph.r);
                 for path in self.packing.values() {
                     match path {
@@ -88,9 +89,8 @@ impl AdmData {
 
                 panic!();
             }
-        } else {
+        } else if adm_graph.r.contains(&self.id) {
             debug_assert_eq!(self.t3.len(), 0); // There should be no T3 vertices
-
         }
     }
 
