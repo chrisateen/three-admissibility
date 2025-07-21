@@ -121,6 +121,8 @@ impl<'a> AdmGraph<'a> {
         }
 
         let path = u.remove_v_from_packing(&v);
+        u.debug_check_consistency(self); // DEBUG
+
         let w = match path {
             Some(path) => match path {
                 Path::TwoPath(x, _) => x,

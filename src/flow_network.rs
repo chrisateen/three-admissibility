@@ -496,7 +496,7 @@ impl FlowNetwork {
         targets: &VertexSet,
     ) {
         // DEBUG
-       u.debug_check_consistency(adm_graph);
+        u.debug_check_consistency(adm_graph);
 
         self.add_pack_edges(&u.packing);
         self.add_edges_between(adm_graph.graph);
