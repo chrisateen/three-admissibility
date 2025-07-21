@@ -76,6 +76,8 @@ impl AdmData {
     pub fn add_t2_to_packing(&mut self, t2: &Vertex, t1: &Vertex) {
         self.packing.insert(*t2, Path::TwoPath(*t1, *t2));
 
+        debug_assert_ne!(*t1, self.id);
+        debug_assert_ne!(*t2, self.id);
         debug_assert_eq!(self.t1.contains(t1), false);
         debug_assert_eq!(self.t2.contains(t1), false);
         debug_assert_eq!(self.t1.contains(t2), false);
@@ -88,6 +90,9 @@ impl AdmData {
     pub fn add_t3_to_packing(&mut self, t3: &Vertex, t1: &Vertex, t2: &Vertex) {
         self.packing.insert(*t3, Path::ThreePath(*t1, *t2, *t3));
 
+        debug_assert_ne!(*t1, self.id);
+        debug_assert_ne!(*t2, self.id);
+        debug_assert_ne!(*t3, self.id);
         debug_assert_eq!(self.t1.contains(t1), false);
         debug_assert_eq!(self.t2.contains(t1), false);
         debug_assert_eq!(self.t3.contains(t1), false);
