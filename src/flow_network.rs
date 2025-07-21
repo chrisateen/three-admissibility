@@ -191,13 +191,14 @@ impl FlowNetwork {
         'outer: for v in &s1_s2 {
             let v_adm_data = adm_data.get(v).unwrap();
             for w in v_adm_data.t1.intersection(l) { // Left neighbours w of v 
-                if u.t1.contains(w) {
-                    continue // w is a neighbour of root u
+                if *w == u.id ||  u.t1.contains(w)  {
+                    continue // w is equal to u or is a neighbour of root u
                 }
 
                 if !self.t_in.contains(w) {
                     //adds edge s2 -> target outside packing or s1 -> target outside packing
                     self.edges.get_mut(v).unwrap().insert(*w);
+                    debug_assert_ne!(*w, u.id);
                     self.t_out.insert(*w);
                     continue 'outer;
                 }
@@ -219,6 +220,7 @@ impl FlowNetwork {
                         //adds edge s1 (v) -> via (x)
                         self.edges.get_mut(v).unwrap().insert(*x);
                         self.edges.entry(*x).or_default().insert(*w);
+                        debug_assert_ne!(*w, u.id);
                         self.t_out.insert(*w);
                         continue 'outer;
                     }
@@ -475,6 +477,11 @@ impl FlowNetwork {
     }
 
     pub fn augmenting_path(&self, u: &mut AdmData, adm_graph:&AdmGraph) {
+        println!("Root = {}", u.id);
+        println!("Arcs = {:?}", self.edges);
+        println!("T in = {:?}", self.t_in);
+        println!("T out = {:?}", self.t_out);
+
         let split_edges = self.split_edges_in_network();
         let flow = self.set_edges_direction(split_edges, u);
 
