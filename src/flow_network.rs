@@ -443,12 +443,6 @@ impl FlowNetwork {
         u.delete_packing(); // Delete old packing
         u.t1.retain(|x| adm_graph.l.contains(x));
 
-        println!("----Deleted packing debug----");
-        println!("T1 = {:?}", u.t1);
-        println!("T2 = {:?}", u.t2);
-        println!("T3 = {:?}", u.t3);
-        println!("Packing = {:?}", u.packing);
-        println!("-----------------------------");
 
         let root_neighbours:VertexSet = aux.neighbours(&root).cloned().collect();
         aux.remove_vertex(&root);
@@ -461,16 +455,11 @@ impl FlowNetwork {
                 // Found a path of length 2: x y
                 // debug_assert!()
                 println!("Adding path {}-{}-{}", u.id, x, y);
-                debug_assert!(adm_graph.l.contains(&y));
-                debug_assert!(adm_graph.r.contains(&x));
                 u.add_t2_to_packing(&y, &x);
             } else if aux.degree(&y) == 1 {
                 // Path of length 3: x y z
                 let z = aux.neighbours(&y).next().unwrap();
                 println!("Adding path {}-{}-{}-{}", u.id, x, y, z);
-                debug_assert!(adm_graph.l.contains(&z));
-                debug_assert!(adm_graph.r.contains(&x));
-                debug_assert!(adm_graph.r.contains(&y));
                 u.add_t3_to_packing(z, &x, &y);
             } else {
                 unreachable!("This should not happen");

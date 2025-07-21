@@ -18,14 +18,14 @@ impl Vias {
         Adds a via for v that is moving to R vias[t2_v][v] += {via}
         Only stores a maximum of 2p+ 1 vias
     */
-    pub fn add_a_via(&mut self, v: Vertex, t2_v: Vertex, via: Vertex) -> bool {
-        let v_entries = self.vias.entry(v).or_default();
-        let t2_v_entries = v_entries.entry(t2_v).or_default();
+    pub fn add_a_via(&mut self, v_right: Vertex, u_left: Vertex, via: Vertex) -> bool {
+        let v_entries = self.vias.entry(v_right).or_default();
+        let t2_v_entries = v_entries.entry(u_left).or_default();
 
         let max_vias = 2 * self.p + 1;
 
         if t2_v_entries.len() > max_vias {
-            panic!("Number of vias for {} is too large", t2_v);
+            panic!("Number of vias for {} is too large", u_left);
         }
         if t2_v_entries.len() == max_vias {
             return false;
