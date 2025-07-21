@@ -6,7 +6,7 @@ use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 
 pub(crate) struct AdmGraph<'a> {
     pub l: VertexSet,
-    r: VertexSet,
+    pub r: VertexSet,
     pub candidates: VertexSet,
     pub adm_data: VertexMap<AdmData>,
     num_of_vertices: usize,
@@ -137,9 +137,9 @@ impl<'a> AdmGraph<'a> {
             }
         }
 
-        //check if we can add a path of length 3
+        // check if we can add a path of length 3
         for x in w_adm_data.t1.intersection(&self.r) {
-            if u.t2.contains(x) | u.t3.contains(x) | (u.id == v) {
+            if u.t1.contains(x) | u.t2.contains(x) | u.t3.contains(x) | (u.id == v) {
                 continue;
             }
             let x_adm_data = self.adm_data.get(x).unwrap();
@@ -151,7 +151,7 @@ impl<'a> AdmGraph<'a> {
                     //Check if there is a shorter path to y (i.e u,x,y)
                     // if so add the shorter path instead
                     if self.graph.adjacent(&u.id, x) {
-                        u.add_t2_to_packing(y, x);
+                        u.add_t2_to_packing(y, x); // < ------- !!!!
                     } else {
                         u.add_t3_to_packing(y, &w, x);
                     }
@@ -219,7 +219,7 @@ impl<'a> AdmGraph<'a> {
     fn stage_2_update(&mut self, u: &mut AdmData, targets: &VertexSet) {
         let mut flow_network = FlowNetwork::new(u.id);
         flow_network.construct_flow_network(self, u, targets);
-        flow_network.augmenting_path(u);
+        flow_network.augmenting_path(u, &self);
     }
 
     /*

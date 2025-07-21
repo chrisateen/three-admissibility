@@ -2,8 +2,11 @@ use crate::adm_data::{AdmData, Path};
 use crate::adm_graph::AdmGraph;
 use crate::vias::Vias;
 use graphbench::editgraph::EditGraph;
-use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
+use graphbench::graph::{EdgeSet, Graph, MutableGraph, Vertex, VertexMap, VertexSet};
+use graphbench::algorithms::*;
+
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::default;
 use std::ops::Neg;
 
 pub struct FlowNetwork {
@@ -178,6 +181,7 @@ impl FlowNetwork {
     fn add_extra_targets(
         &mut self,
         adm_data: &VertexMap<AdmData>,
+        u: &AdmData,        
         targets: &VertexSet,
         vias: &Vias,
         l: &VertexSet,
@@ -186,7 +190,11 @@ impl FlowNetwork {
 
         'outer: for v in &s1_s2 {
             let v_adm_data = adm_data.get(v).unwrap();
-            for w in v_adm_data.t1.intersection(l) {
+            for w in v_adm_data.t1.intersection(l) { // Left neighbours w of v 
+                if u.t1.contains(w) {
+                    continue // w is a neighbour of root u
+                }
+
                 if !self.t_in.contains(w) {
                     //adds edge s2 -> target outside packing or s1 -> target outside packing
                     self.edges.get_mut(v).unwrap().insert(*w);
@@ -367,67 +375,89 @@ impl FlowNetwork {
         None
     }
 
-    /*
-        Use bfs to figure out the edges for the new packing
-    */
-    fn get_new_packing_edges(
-        &self,
-        aug_path_vertices: VertexSet,
-        flow: HashMap<i32, HashSet<i32>>,
-    ) -> (VertexMap<Vertex>, VertexSet) {
-        let mut edges: VertexMap<Vertex> = HashMap::default();
-        let mut visited: VertexSet = VertexSet::default();
-        let mut queue: VecDeque<Vertex> = VecDeque::new();
-        let mut t = VertexSet::default();
-
-        queue.push_back(self.id);
-
-        while let Some(w) = queue.pop_front() {
-            if let Some(w_neighbours) = self.edges.get(&w) {
-                for x in w_neighbours {
-                    if !visited.contains(x) {
-                        queue.push_back(*x);
-                        visited.insert(*x);
-
-                        //Any edge in augmenting path but not in original packing is added
-                        if aug_path_vertices.contains(&w) & aug_path_vertices.contains(x) {
-                            //this would also be neighbours of w not in original packing
-                            let w_neighbours_in_flow = flow.get(&(w as i32)).unwrap();
-                            if w_neighbours_in_flow.contains(&(*x as i32).neg()) || w == self.id {
-                                edges.insert(*x, w);
-                                if self.t_in.contains(x) || self.t_out.contains(x) {
-                                    t.insert(*x);
-                                }
-                            }
-                            //Any edge in original packing and not in augmenting path remains in new pack
-                        } else if !aug_path_vertices.contains(&x) {
-                            edges.insert(*x, w);
-                            if self.t_in.contains(x) || self.t_out.contains(x) {
-                                t.insert(*x);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        (edges, t)
-    }
 
     /*
         Update packing based on results of augmenting path
     */
-    fn update_packing(&self, u: &mut AdmData, new_edges: VertexMap<Vertex>, new_t: &VertexSet) {
-        u.delete_packing();
-        for v in new_t {
-            let n1 = new_edges.get(v).unwrap(); //s2 if v is in t3 or s1 if v is in t2
-            let n2 = new_edges.get(n1).unwrap(); //s1 if v is in t2 or root if v is in t1
-            if *n2 == self.id {
-                u.add_t2_to_packing(v,n1);
+    fn update_packing(&self, u: &mut AdmData, aug_path:Vec<Vertex>, adm_graph:&AdmGraph) {
+        // Collect edges from augmenting path. To ensure consitency, we store edge in sorted vertex-order
+        let aug_path_edges:EdgeSet = aug_path.windows(2).map(|e| if e[0] < e[1] {(e[0],e[1])} else {(e[1],e[0])}).collect();
+
+        println!("Aug path = {:?}", aug_path);
+        println!("Aug path edges = {:?}", aug_path_edges);
+
+        // Collect packing edges
+        let root = u.id;        
+        println!("Root = {root}");
+
+        println!("{:?}", u.packing);
+
+        let mut packing_edges: EdgeSet = EdgeSet::default();
+        for path in u.packing.values() {
+            match path {
+                Path::TwoPath(x, y) => { // root -> x -> y
+                    packing_edges.insert( if root < *x { (root,*x) } else { (*x,root)} );
+                    packing_edges.insert( if x < y { (*x,*y) } else { (*y,*x)} );
+                }
+                Path::ThreePath(w, x, y) => { // root -> w -> x -> y
+                    packing_edges.insert( if root < *w { (root,*w) } else { (*w,root)} );
+                    packing_edges.insert( if w < x { (*w,*x) } else { (*x,*w)} );
+                    packing_edges.insert(  if x < y { (*x,*y) } else { (*y,*x)} );
+                }
+            };
+        }     
+
+        println!("Packing edges = {:?}", packing_edges);
+        debug_assert!(aug_path_edges.iter().all(|(x,y)| x < y));
+        debug_assert!(packing_edges.iter().all(|(x,y)| x < y));
+
+        // Construct aux. graph        
+        let mut aux = EditGraph::new();
+        for (x,y) in aug_path_edges.symmetric_difference(&packing_edges) {
+            aux.add_edge(x, y);
+        }
+
+        debug_assert!(aux.contains(&root));
+        println!("Aux graph = {:?}", aux);        
+
+        // Collect start of paths (neighbours of root)
+        u.delete_packing(); // Delete old packing
+
+        let root_neighbours:VertexSet = aux.neighbours(&root).cloned().collect();
+        aux.remove_vertex(&root);
+        for x in root_neighbours {
+            debug_assert_eq!(aux.degree(&x), 1); // We cannot have a path of length 1 here!
+            let y = *aux.neighbours(&x).next().unwrap();
+            aux.remove_vertex(&x);
+
+            if aux.degree(&y) == 0 {
+                // Found a path of length 2: x y
+                // debug_assert!()
+                debug_assert!(adm_graph.l.contains(&y));
+                debug_assert!(adm_graph.r.contains(&x));
+                u.add_t2_to_packing(&y, &x);
+            } else if aux.degree(&y) == 1 {
+                // Path of length 3: x y z
+                let z = aux.neighbours(&y).next().unwrap();
+                debug_assert!(adm_graph.l.contains(&z));
+                debug_assert!(adm_graph.r.contains(&x));
+                debug_assert!(adm_graph.r.contains(&y));
+                u.add_t3_to_packing(z, &x, &y);
             } else {
-                u.add_t3_to_packing(v,n2, n1);
+                unreachable!("This should not happen");
             }
         }
+        // Old params 
+        //   new_edges: VertexMap<Vertex>, new_t: &VertexSet
+        // for v in new_t {
+        //     let n1 = new_edges.get(v).unwrap(); //s2 if v is in t3 or s1 if v is in t2
+        //     let n2 = new_edges.get(n1).unwrap(); //s1 if v is in t2 or root if v is in t1
+        //     if *n2 == self.id {
+        //         u.add_t2_to_packing(v,n1);
+        //     } else {
+        //         u.add_t3_to_packing(v,n2, n1);
+        //     }
+        // }
     }
 
     pub fn construct_flow_network(
@@ -441,10 +471,10 @@ impl FlowNetwork {
         self.add_direct_edge_from_n_r(&u.n_in_r, adm_graph.graph);
         self.add_edge_with_via_from_n_r(&u.n_in_r, &adm_graph.vias);
         self.add_vias_from_s1(&adm_graph.vias);
-        self.add_extra_targets(&adm_graph.adm_data, targets, &adm_graph.vias, &adm_graph.l);
+        self.add_extra_targets(&adm_graph.adm_data, u, targets, &adm_graph.vias, &adm_graph.l);
     }
 
-    pub fn augmenting_path(&self, u: &mut AdmData) {
+    pub fn augmenting_path(&self, u: &mut AdmData, adm_graph:&AdmGraph) {
         let split_edges = self.split_edges_in_network();
         let flow = self.set_edges_direction(split_edges, u);
 
@@ -455,14 +485,19 @@ impl FlowNetwork {
                 None => {}
                 Some(path) => {
                     //remove duplicate edges
-                    let path_without_duplicates: VertexSet = path
-                        .into_iter()
-                        .filter(|x| *x >= 0)
-                        .map(|x| x as Vertex)
-                        .collect();
-                    let (new_edges, new_t) =
-                        self.get_new_packing_edges(path_without_duplicates, flow);
-                    self.update_packing(u, new_edges, &new_t);
+                    println!("{:?}", path);
+                    let mut path_without_duplicates = Vec::with_capacity(path.len());
+                    let mut last_vertex = None;
+                    for v in path {
+                        let v = if v < 0 { -v } else { v } as u32;
+                        if last_vertex == Some(v) {
+                            continue;
+                        }
+                        last_vertex = Some(v);
+                        path_without_duplicates.push(v);
+                    }
+
+                    self.update_packing(u, path_without_duplicates, adm_graph);
                     return;
                 }
             }
