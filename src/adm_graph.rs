@@ -267,6 +267,7 @@ impl<'a> AdmGraph<'a> {
                 debug_assert!(!self.graph.adjacent(&u, &y)); // Cordless
                 debug_assert!(!self.graph.adjacent(&u, &v)); // Cordless
                 u_data.add_t3_to_packing(&x, &v, &y);
+                return
             }
         }
     }
