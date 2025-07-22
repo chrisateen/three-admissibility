@@ -1,6 +1,8 @@
 use crate::adm_data::{AdmData, Path};
 use crate::adm_graph::AdmGraph;
 use crate::vias::Vias;
+use crate::debug_println;
+
 use graphbench::editgraph::EditGraph;
 use graphbench::graph::{EdgeSet, Graph, MutableGraph, Vertex, VertexMap, VertexSet};
 use graphbench::algorithms::*;
@@ -411,14 +413,14 @@ impl FlowNetwork {
         // Collect edges from augmenting path. To ensure consitency, we store edge in sorted vertex-order
         let aug_path_edges:EdgeSet = aug_path.windows(2).map(|e| if e[0] < e[1] {(e[0],e[1])} else {(e[1],e[0])}).collect();
 
-        println!("Aug path = {:?}", aug_path);
-        println!("Aug path edges = {:?}", aug_path_edges);
+        debug_println!("Aug path = {:?}", aug_path);
+        debug_println!("Aug path edges = {:?}", aug_path_edges);
 
         // Collect packing edges
         let root = u.id;        
-        println!("Root = {root}");
+        debug_println!("Root = {root}");
 
-        println!("{:?}", u.packing);
+        debug_println!("{:?}", u.packing);
 
         let mut packing_edges: EdgeSet = EdgeSet::default();
         for path in u.packing.values() {
@@ -438,7 +440,7 @@ impl FlowNetwork {
             };
         }     
 
-        println!("Packing edges = {:?}", packing_edges);
+        debug_println!("Packing edges = {:?}", packing_edges);
         debug_assert!(aug_path_edges.iter().all(|(x,y)| x < y));
         debug_assert!(packing_edges.iter().all(|(x,y)| x < y));
 
@@ -449,7 +451,7 @@ impl FlowNetwork {
         }
 
         debug_assert!(aux.contains(&root));
-        println!("Aux graph = {:?}", aux);        
+        debug_println!("Aux graph = {:?}", aux);        
 
         // Collect start of paths (neighbours of root)
         u.delete_packing(); // Delete old packing
@@ -466,14 +468,14 @@ impl FlowNetwork {
             if aux.degree(&y) == 0 {
                 // Found a path of length 2: x y
                 // debug_assert!()
-                println!("Adding path {}-{}-{}", u.id, x, y);
+                debug_println!("Adding path {}-{}-{}", u.id, x, y);
                 debug_assert!(adm_graph.graph.adjacent(&u.id, &x));
                 debug_assert!(!adm_graph.graph.adjacent(&u.id, &y)); // Cordless
                 u.add_t2_to_packing(&x, &y);
             } else if aux.degree(&y) == 1 {
                 // Path of length 3: x y z
                 let z = aux.neighbours(&y).next().unwrap();
-                println!("Adding path {}-{}-{}-{}", u.id, x, y, z);
+                debug_println!("Adding path {}-{}-{}-{}", u.id, x, y, z);
                 debug_assert!(adm_graph.graph.adjacent(&u.id, &x));
                 debug_assert!(!adm_graph.graph.adjacent(&u.id, &y)); // Cordless
                 debug_assert!(!adm_graph.graph.adjacent(&u.id, &z)); // Cordless
@@ -507,10 +509,10 @@ impl FlowNetwork {
     }
 
     pub fn augmenting_path(&self, u: &mut AdmData, adm_graph:&AdmGraph) {
-        println!("Root = {}", u.id);
-        println!("Arcs = {:?}", self.arcs);
-        println!("T in = {:?}", self.t_in);
-        println!("T out = {:?}", self.t_out);
+        debug_println!("Root = {}", u.id);
+        debug_println!("Arcs = {:?}", self.arcs);
+        debug_println!("T in = {:?}", self.t_in);
+        debug_println!("T out = {:?}", self.t_out);
 
         let split_edges = self.split_edges_in_network();
         let flow = self.set_edges_direction(split_edges, u);
@@ -518,7 +520,7 @@ impl FlowNetwork {
         match self.bfs(&flow) {
             None => {}
             Some(path) => {
-                println!("{:?}", path);
+                debug_println!("{:?}", path);
                 let mut path_without_duplicates = Vec::with_capacity(path.len());
                 let mut last_vertex = None;
                 for v in path {

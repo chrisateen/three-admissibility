@@ -18,6 +18,11 @@ mod vias;
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
+macro_rules! debug_println {
+    ($($arg:tt)*) => (if ::std::cfg!(debug_assertions) { ::std::println!($($arg)*); })
+}
+pub(crate) use debug_println;
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]

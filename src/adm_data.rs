@@ -1,6 +1,7 @@
 use graphbench::graph::{Graph, Vertex, VertexMap, VertexSet};
 
 use crate::adm_graph::AdmGraph;
+use crate::debug_println;
 
 #[derive(Debug, PartialEq)]
 pub enum Path {
@@ -67,22 +68,22 @@ impl AdmData {
             }
 
             if !all_good {
-                println!("Inconsistency in packing rooted at {}", self.id);
-                println!("Left = {:?}", adm_graph.l);
-                println!("Candidates = {:?}", adm_graph.candidates);
-                println!("Right = {:?}", adm_graph.r);
+                debug_println!("Inconsistency in packing rooted at {}", self.id);
+                debug_println!("Left = {:?}", adm_graph.l);
+                debug_println!("Candidates = {:?}", adm_graph.candidates);
+                debug_println!("Right = {:?}", adm_graph.r);
                 for path in self.packing.values() {
                     match path {
                         Path::TwoPath(s1, t2) => {
-                            println!("Path {}-{}-{}", self.id, s1, t2);
-                            println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
-                            println!("   vertex {} is in L: {}", t2, adm_graph.l.contains(t2));
+                            debug_println!("Path {}-{}-{}", self.id, s1, t2);
+                            debug_println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
+                            debug_println!("   vertex {} is in L: {}", t2, adm_graph.l.contains(t2));
                         },
                         Path::ThreePath(s1, s2, t3) => {
-                            println!("Path {}-{}-{}-{}", self.id, s1, s2, t3);
-                            println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
-                            println!("   vertex {} is in R: {}", s2, adm_graph.r.contains(s2));
-                            println!("   vertex {} is in L: {}", t3, adm_graph.l.contains(t3));
+                            debug_println!("Path {}-{}-{}-{}", self.id, s1, s2, t3);
+                            debug_println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
+                            debug_println!("   vertex {} is in R: {}", s2, adm_graph.r.contains(s2));
+                            debug_println!("   vertex {} is in L: {}", t3, adm_graph.l.contains(t3));
                         }
                     }
                 }
