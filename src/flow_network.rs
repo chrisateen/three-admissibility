@@ -109,19 +109,28 @@ impl FlowNetwork {
         let s2_union_t: VertexSet = self.s2.union(&self.t_in).cloned().collect();
         let mut root_neighbours = self.arcs.remove(&self.id).unwrap_or_default();
 
-        'outer: for y in &s2_union_t {
+        for y in &s2_union_t {
             for x in n_in_r.difference(&self.s1) {
                 if graph.adjacent(x, y) {
-                    //add edge from root -> N_R(v) / x
+                    // if self.id == 30 && *y == 70 {
+                    //     panic!();
+                    // }
+                    // if self.id == 30 && *x == 70 {
+                    //     panic!(); <--- this one 
+                    // }                    
+
+                    // Add edge from root -> N_R(v) / x
                     root_neighbours.insert(*x);
-                    //edges are added as N_R(v)/ x -> s2 or N_R(v) -> t
+
+                    // Edges are added as N_R(v)/ x -> s2 or N_R(v) -> t
                     let x_neighbours = self.arcs.entry(*x).or_default();
                     x_neighbours.insert(*y);
                     debug_assert_ne!(*y, self.id);
-                    continue 'outer;
+                    break;
                 }
             }
         }
+
         self.arcs.insert(self.id, root_neighbours);
     }
 
@@ -354,7 +363,7 @@ impl FlowNetwork {
     /*
         Used to find the shortest path from v (a neighbour of the root vertex) to vertex in t_out
     */
-    fn bfs(&self, v: i32, flow: &HashMap<i32, HashSet<i32>>) -> Option<Vec<i32>> {
+    fn bfs(&self, flow: &HashMap<i32, HashSet<i32>>) -> Option<Vec<i32>> {
         //Keeps a track of the path from endpoint to root
         //Hashmap stores child -> parent to make it easy to get the right path from sink
         let mut path: HashMap<i32, i32> = HashMap::default();
@@ -363,29 +372,31 @@ impl FlowNetwork {
         let root = self.id as i32;
 
         visited.insert(root);
-        visited.insert(v);
-        queue.push_back(v);
-        path.insert(v, root);
+        queue.push_back(root);
 
         while let Some(u) = queue.pop_front() {
-            if let Some(u_neighbours) = flow.get(&u) {
-                for w in u_neighbours {
-                    if !visited.contains(w) {
-                        queue.push_back(*w);
-                        visited.insert(*w);
-                        path.insert(*w, u);
+            let u_neighbours = if let Some(u_neighbours) = flow.get(&u) {
+                u_neighbours
+            } else {
+                continue
+            };
+
+            for w in u_neighbours {
+                if !visited.contains(w) {
+                    queue.push_back(*w);
+                    visited.insert(*w);
+                    path.insert(*w, u);
+                }
+                if self.t_out.contains(&(*w as Vertex)) {
+                    let mut result_path = vec![*w];
+                    let mut current = w;
+                    while *current != root {
+                        let next = path.get(current).unwrap();
+                        result_path.push(*next);
+                        current = next;
                     }
-                    if self.t_out.contains(&(*w as Vertex)) {
-                        let mut result_path = vec![*w];
-                        let mut current = w;
-                        while *current != root {
-                            let next = path.get(current).unwrap();
-                            result_path.push(*next);
-                            current = next;
-                        }
-                        result_path.reverse();
-                        return Some(result_path);
-                    }
+                    result_path.reverse();
+                    return Some(result_path);
                 }
             }
         }
@@ -456,27 +467,21 @@ impl FlowNetwork {
                 // Found a path of length 2: x y
                 // debug_assert!()
                 println!("Adding path {}-{}-{}", u.id, x, y);
+                debug_assert!(adm_graph.graph.adjacent(&u.id, &x));
+                debug_assert!(!adm_graph.graph.adjacent(&u.id, &y)); // Cordless
                 u.add_t2_to_packing(&x, &y);
             } else if aux.degree(&y) == 1 {
                 // Path of length 3: x y z
                 let z = aux.neighbours(&y).next().unwrap();
                 println!("Adding path {}-{}-{}-{}", u.id, x, y, z);
+                debug_assert!(adm_graph.graph.adjacent(&u.id, &x));
+                debug_assert!(!adm_graph.graph.adjacent(&u.id, &y)); // Cordless
+                debug_assert!(!adm_graph.graph.adjacent(&u.id, &z)); // Cordless
                 u.add_t3_to_packing(&x, &y, z);
             } else {
                 unreachable!("This should not happen");
             }
         }
-        // Old params 
-        //   new_edges: VertexMap<Vertex>, new_t: &VertexSet
-        // for v in new_t {
-        //     let n1 = new_edges.get(v).unwrap(); //s2 if v is in t3 or s1 if v is in t2
-        //     let n2 = new_edges.get(n1).unwrap(); //s1 if v is in t2 or root if v is in t1
-        //     if *n2 == self.id {
-        //         u.add_t2_to_packing(v,n1);
-        //     } else {
-        //         u.add_t3_to_packing(v,n2, n1);
-        //     }
-        // }
     }
 
     pub fn construct_flow_network(
@@ -491,6 +496,11 @@ impl FlowNetwork {
         self.add_pack_edges(&u.packing);
         self.add_edges_between(adm_graph.graph);
         self.add_direct_edge_from_n_r(&u.n_in_r, adm_graph.graph);
+
+        // polbooks crash: In the previous method, the vertex 70
+        // is added to the flown network for u = 30
+
+
         self.add_edge_with_via_from_n_r(&u.n_in_r, &adm_graph.vias);
         self.add_vias_from_s1(&adm_graph.vias);
         self.add_extra_targets(&adm_graph.adm_data, u, targets, &adm_graph.vias, &adm_graph.l);
@@ -505,29 +515,24 @@ impl FlowNetwork {
         let split_edges = self.split_edges_in_network();
         let flow = self.set_edges_direction(split_edges, u);
 
-        //See if there is an augmenting path from source to a target not in packing
-        //Once a path is found update u's original packing
-        for v in flow.get(&(self.id as i32)).unwrap() {
-            match self.bfs(*v, &flow) {
-                None => {}
-                Some(path) => {
-                    //remove duplicate edges
-                    println!("{:?}", path);
-                    let mut path_without_duplicates = Vec::with_capacity(path.len());
-                    let mut last_vertex = None;
-                    for v in path {
-                        let v = if v < 0 { -v } else { v } as u32;
-                        if last_vertex == Some(v) {
-                            continue;
-                        }
-                        last_vertex = Some(v);
-                        path_without_duplicates.push(v);
+        match self.bfs(&flow) {
+            None => {}
+            Some(path) => {
+                println!("{:?}", path);
+                let mut path_without_duplicates = Vec::with_capacity(path.len());
+                let mut last_vertex = None;
+                for v in path {
+                    let v = if v < 0 { -v } else { v } as u32;
+                    if last_vertex == Some(v) {
+                        continue;
                     }
-
-                    assert!(adm_graph.l.contains(path_without_duplicates.last().unwrap()));
-                    self.update_packing(u, path_without_duplicates, adm_graph);
-                    return;
+                    last_vertex = Some(v);
+                    path_without_duplicates.push(v);
                 }
+
+                assert!(adm_graph.l.contains(path_without_duplicates.last().unwrap()));
+                self.update_packing(u, path_without_duplicates, adm_graph);
+                return;
             }
         }
     }

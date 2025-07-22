@@ -35,7 +35,7 @@ impl AdmData {
     pub fn debug_check_consistency(&self, adm_graph:&AdmGraph) {
         let neighbours:VertexSet = adm_graph.graph.neighbours(&self.id).cloned().collect();
         let left_neighbours:VertexSet = neighbours.iter().filter(|x| adm_graph.l.contains(x)).cloned().collect();
-        let right_neighbours:VertexSet = neighbours.iter().filter(|x| adm_graph.r.contains(x)).cloned().collect();
+        // let right_neighbours:VertexSet = neighbours.iter().filter(|x| adm_graph.r.contains(x)).cloned().collect();
 
         // Left neighbours of this vertex should ALL be contained in t1
         debug_assert_eq!(left_neighbours.difference(&self.t1).count(), 0 );
@@ -93,6 +93,17 @@ impl AdmData {
             debug_assert_eq!(self.t3.len(), 0); // There should be no T3 vertices
         }
     }
+
+    // pub fn clean_two_packing(&mut self, left_set:&VertexSet) {
+    //     debug_assert!(!left_set.contains(&self.id)); // We must be in R
+
+    //     self.packing.retain(|_,path| {
+    //         match path {
+    //             Path::TwoPath(_, y) => left_set.contains(y), // Retain if y still in L
+    //             Path::ThreePath(_, _, _) => unreachable!(), // There should be no 3-paths in here
+    //         }
+    //     });
+    // }
 
 
     pub fn add_t2_to_packing(&mut self, t1: &Vertex, t2: &Vertex) {

@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::adm_graph::AdmGraph;
 use crate::utils::{load_graph, save_ordering_to_file};
 use clap::{Parser, Subcommand};
