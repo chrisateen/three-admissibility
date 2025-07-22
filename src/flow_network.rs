@@ -475,11 +475,19 @@ impl FlowNetwork {
             } else if aux.degree(&y) == 1 {
                 // Path of length 3: x y z
                 let z = aux.neighbours(&y).next().unwrap();
-                debug_println!("Adding path {}-{}-{}-{}", u.id, x, y, z);
-                debug_assert!(adm_graph.graph.adjacent(&u.id, &x));
-                debug_assert!(!adm_graph.graph.adjacent(&u.id, &y)); // Cordless
-                debug_assert!(!adm_graph.graph.adjacent(&u.id, &z)); // Cordless
-                u.add_t3_to_packing(&x, &y, z);
+
+                if adm_graph.graph.adjacent(&u.id, &y) {
+                    debug_println!("Adding path {}-{}-{}", u.id, y, z);
+                    debug_assert!(adm_graph.graph.adjacent(&u.id, &y));
+                    debug_assert!(!adm_graph.graph.adjacent(&u.id, &z)); // Cordless
+                    u.add_t2_to_packing(&y, z);
+                } else {
+                    debug_println!("Adding path {}-{}-{}-{}", u.id, x, y, z);
+                    debug_assert!(adm_graph.graph.adjacent(&u.id, &x));
+                    debug_assert!(!adm_graph.graph.adjacent(&u.id, &y)); // Cordless
+                    debug_assert!(!adm_graph.graph.adjacent(&u.id, &z)); // Cordless
+                    u.add_t3_to_packing(&x, &y, z);
+                }
             } else {
                 unreachable!("This should not happen");
             }
