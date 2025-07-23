@@ -512,7 +512,6 @@ impl<'a> AdmGraph<'a> {
                     abort = true;
                 }
             } else if self.r.contains(&v) {
-                // TODO: check 2-packing
                 let left_1: VertexSet = self
                     .graph
                     .neighbours(&v)
