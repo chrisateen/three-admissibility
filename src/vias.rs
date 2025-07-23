@@ -34,12 +34,6 @@ impl Vias {
         true
     }
 
-    //TODO to delete vias for a vertex v moving to R, we need to identify all the t2 of v
-    // and for each of them delete v from vias
-    pub fn remove_vias(&mut self, _v: Vertex) {
-        todo!();
-    }
-
     /*
         Gets all vias between v in R and a vertex in t2_l of v
         If there isn't any return none

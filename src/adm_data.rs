@@ -18,9 +18,6 @@ pub struct AdmData {
     pub packing: VertexMap<Path>,
 }
 
-//TODO add functions that get t1_l, t1_r that takes in set L or R
-//the function should use retain to update t1_1, t1_r
-// what ever calls this fn should use an assert to make sure the set now contains vertices in L
 impl AdmData {
     pub fn new(v: Vertex, v_neighbours: VertexSet) -> Self {
         AdmData {
@@ -33,13 +30,16 @@ impl AdmData {
         }
     }
 
-    pub fn debug_check_consistency(&self, adm_graph:&AdmGraph) {
-        let neighbours:VertexSet = adm_graph.graph.neighbours(&self.id).cloned().collect();
-        let left_neighbours:VertexSet = neighbours.iter().filter(|x| adm_graph.l.contains(x)).cloned().collect();
-        // let right_neighbours:VertexSet = neighbours.iter().filter(|x| adm_graph.r.contains(x)).cloned().collect();
+    pub fn debug_check_consistency(&self, adm_graph: &AdmGraph) {
+        let neighbours: VertexSet = adm_graph.graph.neighbours(&self.id).cloned().collect();
+        let left_neighbours: VertexSet = neighbours
+            .iter()
+            .filter(|x| adm_graph.l.contains(x))
+            .cloned()
+            .collect();
 
-        // Left neighbours of this vertex should ALL be contained in t1
-        debug_assert_eq!(left_neighbours.difference(&self.t1).count(), 0 );
+        // Left neighbours of this vertex should all be contained in t1
+        debug_assert_eq!(left_neighbours.difference(&self.t1).count(), 0);
 
         for x in self.t1.iter() {
             debug_assert!(neighbours.contains(x));
@@ -50,15 +50,14 @@ impl AdmData {
 
         if adm_graph.l.contains(&self.id) && !adm_graph.candidates.contains(&self.id) {
             // This is a 3-packing
-            // Ensure that vertices of packign are on correct sides
-
+            // Ensure that vertices of packaging are on correct sides
             let mut all_good = true;
             for path in self.packing.values() {
                 match path {
                     Path::TwoPath(s1, t2) => {
                         all_good &= adm_graph.r.contains(s1);
                         all_good &= adm_graph.l.contains(t2);
-                    },
+                    }
                     Path::ThreePath(s1, s2, t3) => {
                         all_good &= adm_graph.r.contains(s1);
                         all_good &= adm_graph.r.contains(s2);
@@ -76,14 +75,34 @@ impl AdmData {
                     match path {
                         Path::TwoPath(s1, t2) => {
                             debug_println!("Path {}-{}-{}", self.id, s1, t2);
-                            debug_println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
-                            debug_println!("   vertex {} is in L: {}", t2, adm_graph.l.contains(t2));
-                        },
+                            debug_println!(
+                                "   vertex {} is in R: {}",
+                                s1,
+                                adm_graph.r.contains(s1)
+                            );
+                            debug_println!(
+                                "   vertex {} is in L: {}",
+                                t2,
+                                adm_graph.l.contains(t2)
+                            );
+                        }
                         Path::ThreePath(s1, s2, t3) => {
                             debug_println!("Path {}-{}-{}-{}", self.id, s1, s2, t3);
-                            debug_println!("   vertex {} is in R: {}", s1, adm_graph.r.contains(s1));
-                            debug_println!("   vertex {} is in R: {}", s2, adm_graph.r.contains(s2));
-                            debug_println!("   vertex {} is in L: {}", t3, adm_graph.l.contains(t3));
+                            debug_println!(
+                                "   vertex {} is in R: {}",
+                                s1,
+                                adm_graph.r.contains(s1)
+                            );
+                            debug_println!(
+                                "   vertex {} is in R: {}",
+                                s2,
+                                adm_graph.r.contains(s2)
+                            );
+                            debug_println!(
+                                "   vertex {} is in L: {}",
+                                t3,
+                                adm_graph.l.contains(t3)
+                            );
                         }
                     }
                 }
@@ -95,27 +114,15 @@ impl AdmData {
         }
     }
 
-    // pub fn clean_two_packing(&mut self, left_set:&VertexSet) {
-    //     debug_assert!(!left_set.contains(&self.id)); // We must be in R
-
-    //     self.packing.retain(|_,path| {
-    //         match path {
-    //             Path::TwoPath(_, y) => left_set.contains(y), // Retain if y still in L
-    //             Path::ThreePath(_, _, _) => unreachable!(), // There should be no 3-paths in here
-    //         }
-    //     });
-    // }
-
-
     pub fn add_t2_to_packing(&mut self, t1: &Vertex, t2: &Vertex) {
         self.packing.insert(*t2, Path::TwoPath(*t1, *t2));
 
         debug_assert_ne!(*t1, self.id);
         debug_assert_ne!(*t2, self.id);
-        debug_assert_eq!(self.t1.contains(t1), false);
-        debug_assert_eq!(self.t2.contains(t1), false);
-        debug_assert_eq!(self.t1.contains(t2), false);
-        debug_assert_eq!(self.t2.contains(t2), false);
+        debug_assert!(!self.t1.contains(t1));
+        debug_assert!(!self.t2.contains(t1));
+        debug_assert!(!self.t1.contains(t2));
+        debug_assert!(!self.t2.contains(t2));
 
         self.t1.insert(*t1);
         self.t2.insert(*t2);
@@ -127,15 +134,15 @@ impl AdmData {
         debug_assert_ne!(*t1, self.id);
         debug_assert_ne!(*t2, self.id);
         debug_assert_ne!(*t3, self.id);
-        debug_assert_eq!(self.t1.contains(t1), false);
-        debug_assert_eq!(self.t2.contains(t1), false);
-        debug_assert_eq!(self.t3.contains(t1), false);
-        debug_assert_eq!(self.t1.contains(t2), false);
-        debug_assert_eq!(self.t2.contains(t2), false);
-        debug_assert_eq!(self.t3.contains(t2), false);
-        debug_assert_eq!(self.t1.contains(t3), false);
-        debug_assert_eq!(self.t2.contains(t3), false);
-        debug_assert_eq!(self.t3.contains(t3), false);
+        debug_assert!(!self.t1.contains(t1));
+        debug_assert!(!self.t2.contains(t1));
+        debug_assert!(!self.t3.contains(t1));
+        debug_assert!(!self.t1.contains(t2));
+        debug_assert!(!self.t2.contains(t2));
+        debug_assert!(!self.t3.contains(t2));
+        debug_assert!(!self.t1.contains(t3));
+        debug_assert!(!self.t2.contains(t3));
+        debug_assert!(!self.t3.contains(t3));
 
         self.t1.insert(*t1);
         self.t2.insert(*t2);
