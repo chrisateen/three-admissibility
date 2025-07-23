@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::adm_graph::AdmGraph;
 use crate::utils::{load_graph, save_ordering_to_file};
 use clap::{Parser, Subcommand};
@@ -8,11 +11,17 @@ use std::cmp::max;
 
 mod adm_data;
 mod adm_graph;
+mod flow_network;
 mod utils;
 mod vias;
 
 #[global_allocator]
 static PEAK_ALLOC: PeakAlloc = PeakAlloc;
+
+macro_rules! debug_println {
+    ($($arg:tt)*) => (if ::std::cfg!(debug_assertions) { ::std::println!($($arg)*); })
+}
+pub(crate) use debug_println;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -51,6 +60,8 @@ fn compute_ordering(p: usize, graph: &EditGraph, save_order: bool) -> Option<Vec
     adm_graph.initialise_candidates();
 
     let mut next_vertex = adm_graph.get_next_v_in_ordering();
+    adm_graph.debug_check_consistency();
+
     let mut order = Vec::default();
     while next_vertex.is_some() && !adm_graph.is_all_vertices_in_r_or_candidates() {
         let v = next_vertex.unwrap();
@@ -58,6 +69,7 @@ fn compute_ordering(p: usize, graph: &EditGraph, save_order: bool) -> Option<Vec
             order.push(v);
         }
         next_vertex = adm_graph.get_next_v_in_ordering();
+        adm_graph.debug_check_consistency();
     }
     if save_order {
         order.extend(next_vertex.iter()); // Adds vertex if not None
@@ -158,7 +170,7 @@ fn main() {
 }
 
 #[cfg(test)]
-mod test {
+mod test_main {
     use super::*;
     use graphbench::editgraph::EditGraph;
     use graphbench::graph::{EdgeSet, MutableGraph};
