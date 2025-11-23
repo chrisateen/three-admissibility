@@ -1,0 +1,26 @@
+name: 'Changelog'
+description: 'Push CHANGELOG.md'
+inputs:
+  github_token:
+    description: 'github access token for upload artifact'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Fetch changelog
+      uses: actions/download-artifact@v4
+      with:
+        name: CHANGELOG.md
+        path: ./
+
+    - name: Commit changelog
+      shell: bash
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git add CHANGELOG.md
+        git commit -m "docs: update changelog [skip ci]" || echo "No changes to commit"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}

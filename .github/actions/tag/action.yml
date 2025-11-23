@@ -1,0 +1,29 @@
+name: 'Tag'
+description: 'Create tag for release'
+
+outputs:
+  version:
+    description: 'New release version'
+    value: ${{  steps.version.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Git Version
+      id: version
+      uses: codacy/git-version@2.7.1
+      with:
+        release-branch: main
+        minor-identifier: feat
+
+    - name: Determine next version
+      shell: bash
+      run: echo "version=${{ steps.version.outputs.version }}" >> "$GITHUB_OUTPUT"
+
+    - name: Create Tag
+      shell: bash
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version}}"
+        git push origin "v${{ steps.version.outputs.version }}"

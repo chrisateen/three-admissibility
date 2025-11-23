@@ -1,0 +1,99 @@
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  pre_release:
+    name: Pre release steps
+    runs-on: ubuntu-latest
+    if: |
+      contains(fromJSON('["feat", "fix"]'), github.event.head_commit.message)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Conventional Commits
+        uses: webiny/action-conventional-commits@v1.3.0
+
+      - name: Tag
+        id: tag
+        uses: ./.github/actions/tag
+
+      - name: Generate changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Save changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: CHANGELOG.md
+          retention-days: 1
+          path: ./
+
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      changelog: ${{ steps.git-cliff.outputs.content }}
+
+  release:
+    name: Release - ${{ matrix.platform.os-name }}
+    needs: [pre_release]
+    strategy:
+      matrix:
+        platform:
+          - os-name: Windows-x86_64
+            runs-on: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+
+          - os-name: Linux-x86_64
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+
+          - os-name: Linux-aarch64
+            runs-on: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+
+          - os-name: macOS-x86_64
+            runs-on: macos-latest
+            target: x86_64-apple-darwin
+
+          - os-name: macOS-aarch64
+            runs-on: macos-latest
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Build
+        uses: ./.github/actions/build
+        with:
+          target: ${{ matrix.platform.target }}
+          os:  ${{ matrix.platform.os-name }}
+
+      - name: Release
+        uses: ./.github/actions/release
+        with:
+          version: ${{ needs.pre_release.outputs.version }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          changelog: ${{ needs.pre_release.outputs.changelog }}
+
+  publish_changelog:
+    needs: [release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Changelog
+        uses: ./.github/actions/changelog
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}

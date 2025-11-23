@@ -1,0 +1,38 @@
+name: 'Build'
+description: 'Builds the binaries'
+inputs:
+  target:
+    description: 'target-arch'
+    required: true
+  os:
+    description: 'target os name'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install dependencies for Windows target
+      shell: bash
+      if: inputs.target == 'x86_64-pc-windows-gnu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mingw-w64
+
+    - name: Build
+      uses: actions-rs/cargo@v1
+      with:
+        use-cross: true
+        command: build
+        args: --release --target ${{ inputs.target }}
+
+    - name: Compress binary
+      shell: bash
+      run: |
+        BIN_NAME="three-admissibility"
+        mkdir -p dist
+        if [[ "${{ inputs.target }}" == *"windows"* ]]; then
+          EXT=".exe"
+          zip -j dist/${BIN_NAME}-${{ inputs.os }}.zip target/${{ inputs.target }}/release/${BIN_NAME}$EXT
+        else
+          tar -czvf dist/${BIN_NAME}-${{ inputs.os }}.tar.gz -C target/${{ inputs.target }}/release ${BIN_NAME}
+        fi

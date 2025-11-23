@@ -1,0 +1,25 @@
+name: 'Upload'
+description: 'Upload to github releases'
+inputs:
+  github_token:
+    description: 'github access token for upload artifact'
+    required: true
+  version:
+    description: 'release version'
+    required: true
+  changelog:
+    description: 'changelog text'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Upload artifact to Github releases
+      uses: svenstaro/upload-release-action@v2
+      with:
+          file: dist/three-admissibility*
+          repo_token: ${{ inputs.github_token }}
+          tag: 'v${{ inputs.version }}'
+          overwrite: true
+          file_glob: true
+          body: ${{ inputs.changelog }}
