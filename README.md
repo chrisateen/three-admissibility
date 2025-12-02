@@ -1,6 +1,9 @@
 # 3-admissibility
 Rust implementation of the 3-admissibility algorithm
 
+## Link to paper
+https://arxiv.org/abs/2512.01121
+
 ## To run the program
 1. This program can be run using the collection of networks found in the network-corpus repo
 2. Download the network-corpus repo and run the following command to run the program on a specific network
